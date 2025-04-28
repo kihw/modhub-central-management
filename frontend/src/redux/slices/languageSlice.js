@@ -1,53 +1,45 @@
 import { createSlice } from '@reduxjs/toolkit';
 
-const getInitialLanguage = () => {
-  // Try to get language from localStorage
-  const savedLanguage = localStorage.getItem('modhub-language');
-  if (savedLanguage) return savedLanguage;
+const getBrowserLanguage = () => {
+  const browserLang = navigator.language || navigator.userLanguage;
+  const shortLang = browserLang.split('-')[0];
   
-  // Otherwise use browser language or fall back to English
-  const browserLang = navigator.language.split('-')[0];
-  return ['en', 'fr', 'es', 'de'].includes(browserLang) ? browserLang : 'en';
+  // Only support English and French for now
+  return ['en', 'fr'].includes(shortLang) ? shortLang : 'en';
 };
 
 const initialState = {
-  language: getInitialLanguage(),
-  availableLanguages: [
-    { code: 'en', name: 'English', flag: '🇬🇧' },
-    { code: 'fr', name: 'Français', flag: '🇫🇷' },
-    { code: 'es', name: 'Español', flag: '🇪🇸' },
-    { code: 'de', name: 'Deutsch', flag: '🇩🇪' }
-  ]
+  language: localStorage.getItem('modHubLanguage') || getBrowserLanguage(),
+  available: ['en', 'fr'],
 };
 
-const languageSlice = createSlice({
+export const languageSlice = createSlice({
   name: 'language',
   initialState,
   reducers: {
     setLanguage: (state, action) => {
-      state.language = action.payload;
-      localStorage.setItem('modhub-language', action.payload);
+      if (state.available.includes(action.payload)) {
+        state.language = action.payload;
+        localStorage.setItem('modHubLanguage', action.payload);
+      }
     },
     addLanguage: (state, action) => {
-      // Only add if it doesn't already exist
-      if (!state.availableLanguages.some(lang => lang.code === action.payload.code)) {
-        state.availableLanguages.push(action.payload);
+      if (!state.available.includes(action.payload)) {
+        state.available.push(action.payload);
       }
     },
     removeLanguage: (state, action) => {
-      // Can't remove the current language
-      if (state.language !== action.payload) {
-        state.availableLanguages = state.availableLanguages.filter(
-          lang => lang.code !== action.payload
-        );
+      // Can't remove all languages
+      if (state.available.length > 1 && action.payload !== state.language) {
+        state.available = state.available.filter(lang => lang !== action.payload);
       }
-    }
-  }
+    },
+  },
 });
 
 export const { setLanguage, addLanguage, removeLanguage } = languageSlice.actions;
 
 export const selectLanguage = (state) => state.language.language;
-export const selectAvailableLanguages = (state) => state.language.availableLanguages;
+export const selectAvailableLanguages = (state) => state.language.available;
 
 export default languageSlice.reducer;

@@ -1,0 +1,80 @@
+/* Styles de base pour l'application */
+.App {
+  text-align: center;
+}
+
+/* Styles pour le conteneur principal */
+.content-container {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow-x: hidden;
+}
+
+/* Styles pour les layouts */
+.main-layout {
+  display: flex;
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
+}
+
+/* Styles pour la sidebar */
+.sidebar-open {
+  margin-left: 0;
+  transition: margin-left 0.3s ease;
+}
+
+.sidebar-closed {
+  margin-left: -250px;
+  transition: margin-left 0.3s ease;
+}
+
+/* Styles pour les cartes */
+.card {
+  background-color: #ffffff;
+  border-radius: 0.5rem;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+  padding: 1.25rem;
+  margin-bottom: 1rem;
+}
+
+/* Styles pour les tableaux */
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th,
+td {
+  padding: 0.75rem;
+  text-align: left;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+th {
+  font-weight: 600;
+}
+
+/* Styles pour le mode sombre */
+.dark-mode {
+  background-color: #1a202c;
+  color: #e2e8f0;
+}
+
+.dark-mode .card {
+  background-color: #2d3748;
+  color: #e2e8f0;
+}
+
+.dark-mode th,
+.dark-mode td {
+  border-bottom: 1px solid #4a5568;
+}
+
+/* Styles responsive */
+@media (max-width: 768px) {
+  .content-container {
+    padding: 1rem;
+  }
+}

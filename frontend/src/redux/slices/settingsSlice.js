@@ -4,40 +4,47 @@ const initialState = {
   general: {
     startWithWindows: true,
     minimizeToTray: true,
-    theme: 'system', // 'light', 'dark', 'system'
-    language: 'en',
     checkForUpdates: true,
+    theme: 'system', // 'light', 'dark', 'system'
+    language: 'en', // 'en', 'fr', etc.
+    notifications: {
+      enabled: true,
+      showModActivations: true,
+      showModErrors: true,
+      showSystemEvents: false,
+    },
   },
-  notifications: {
-    showNotifications: true,
-    soundEnabled: true,
-    notifyOnModChange: true,
-    notifyOnProfileChange: true,
-    notifyOnError: true,
+  automation: {
+    scanInterval: 5, // in seconds
+    enableAutoMode: true,
+    conflictResolution: 'priority', // 'priority', 'last-activated', 'ask'
+    applyDelay: 1000, // milliseconds to wait before applying mod changes
   },
-  advanced: {
-    pollingRate: 1000, // ms
-    lowPowerMode: false,
-    debugMode: false,
-    logLevel: 'info', // 'error', 'warn', 'info', 'debug'
-    apiPort: 8000,
+  performance: {
+    resourceUsageLimit: 'medium', // 'low', 'medium', 'high'
+    loggingLevel: 'normal', // 'minimal', 'normal', 'verbose', 'debug'
+    enableMetrics: true,
   },
-  privacy: {
-    collectAnonymousUsageData: false,
-    sendErrorReports: true,
+  developer: {
+    enableDevTools: false,
+    showAdvancedOptions: false,
+    experimentalFeatures: false,
   },
-  backups: {
-    enableAutomaticBackups: true,
-    backupFrequency: 'weekly', // 'daily', 'weekly', 'monthly'
-    maxBackupCount: 5,
-    backupLocation: '',
+  ui: {
+    sidebarCollapsed: false,
+    dashboardLayout: 'grid', // 'grid', 'list'
+    showActiveModsOnTop: true,
+    animationsEnabled: true,
   },
-  shortcuts: {
-    toggleGamingMod: 'Ctrl+Alt+G',
-    toggleNightMod: 'Ctrl+Alt+N',
-    toggleMediaMod: 'Ctrl+Alt+M',
-    openDashboard: 'Ctrl+Alt+D',
-  }
+  user: {
+    profileId: null,
+    userName: '',
+    userEmail: '',
+    preferences: {
+      defaultMod: null,
+      favoriteApps: [],
+    },
+  },
 };
 
 export const settingsSlice = createSlice({
@@ -47,66 +54,70 @@ export const settingsSlice = createSlice({
     updateGeneralSettings: (state, action) => {
       state.general = { ...state.general, ...action.payload };
     },
+    updateAutomationSettings: (state, action) => {
+      state.automation = { ...state.automation, ...action.payload };
+    },
+    updatePerformanceSettings: (state, action) => {
+      state.performance = { ...state.performance, ...action.payload };
+    },
+    updateDeveloperSettings: (state, action) => {
+      state.developer = { ...state.developer, ...action.payload };
+    },
+    updateUISettings: (state, action) => {
+      state.ui = { ...state.ui, ...action.payload };
+    },
+    updateUserSettings: (state, action) => {
+      state.user = { ...state.user, ...action.payload };
+    },
     updateNotificationSettings: (state, action) => {
-      state.notifications = { ...state.notifications, ...action.payload };
+      state.general.notifications = { 
+        ...state.general.notifications, 
+        ...action.payload 
+      };
     },
-    updateAdvancedSettings: (state, action) => {
-      state.advanced = { ...state.advanced, ...action.payload };
+    toggleTheme: (state) => {
+      if (state.general.theme === 'light') {
+        state.general.theme = 'dark';
+      } else if (state.general.theme === 'dark') {
+        state.general.theme = 'system';
+      } else {
+        state.general.theme = 'light';
+      }
     },
-    updatePrivacySettings: (state, action) => {
-      state.privacy = { ...state.privacy, ...action.payload };
+    toggleSidebar: (state) => {
+      state.ui.sidebarCollapsed = !state.ui.sidebarCollapsed;
     },
-    updateBackupSettings: (state, action) => {
-      state.backups = { ...state.backups, ...action.payload };
-    },
-    updateShortcuts: (state, action) => {
-      state.shortcuts = { ...state.shortcuts, ...action.payload };
-    },
-    setTheme: (state, action) => {
-      state.general.theme = action.payload;
-    },
-    setLanguage: (state, action) => {
-      state.general.language = action.payload;
-    },
-    resetToDefaults: (state) => {
+    resetSettings: (state) => {
       return initialState;
     },
     importSettings: (state, action) => {
-      // Merge imported settings with current settings structure to ensure compatibility
-      const importedSettings = action.payload;
-      return {
-        general: { ...state.general, ...importedSettings.general },
-        notifications: { ...state.notifications, ...importedSettings.notifications },
-        advanced: { ...state.advanced, ...importedSettings.advanced },
-        privacy: { ...state.privacy, ...importedSettings.privacy },
-        backups: { ...state.backups, ...importedSettings.backups },
-        shortcuts: { ...state.shortcuts, ...importedSettings.shortcuts },
-      };
-    },
+      return { ...initialState, ...action.payload };
+    }
   },
 });
 
-export const { 
+export const {
   updateGeneralSettings,
+  updateAutomationSettings,
+  updatePerformanceSettings,
+  updateDeveloperSettings,
+  updateUISettings,
+  updateUserSettings,
   updateNotificationSettings,
-  updateAdvancedSettings, 
-  updatePrivacySettings,
-  updateBackupSettings,
-  updateShortcuts,
-  setTheme,
-  setLanguage,
-  resetToDefaults,
+  toggleTheme,
+  toggleSidebar,
+  resetSettings,
   importSettings
 } = settingsSlice.actions;
 
 // Selectors
-export const selectAllSettings = (state) => state.settings;
 export const selectGeneralSettings = (state) => state.settings.general;
-export const selectNotificationSettings = (state) => state.settings.notifications;
-export const selectAdvancedSettings = (state) => state.settings.advanced;
-export const selectPrivacySettings = (state) => state.settings.privacy;
-export const selectBackupSettings = (state) => state.settings.backups;
-export const selectShortcuts = (state) => state.settings.shortcuts;
+export const selectAutomationSettings = (state) => state.settings.automation;
+export const selectPerformanceSettings = (state) => state.settings.performance;
+export const selectDeveloperSettings = (state) => state.settings.developer;
+export const selectUISettings = (state) => state.settings.ui;
+export const selectUserSettings = (state) => state.settings.user;
 export const selectTheme = (state) => state.settings.general.theme;
+export const selectNotificationSettings = (state) => state.settings.general.notifications;
 
 export default settingsSlice.reducer;
