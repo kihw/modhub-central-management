@@ -1,96 +1,62 @@
-import React, { useEffect, useState } from 'react';
-import { HashRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { ThemeProvider, createTheme } from '@mui/material/styles';
-import CssBaseline from '@mui/material/CssBaseline';
-import { LocalizationProvider } from '@mui/x-date-pickers';
-import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
-import fr from 'date-fns/locale/fr';
-
-// Pages
-import Dashboard from './pages/Dashboard';
-import Students from './pages/Students';
-import Courses from './pages/Courses';
-import Settings from './pages/Settings';
-import Login from './pages/Login';
-
-// Components
-import MainLayout from './components/layouts/MainLayout';
-import AuthGuard from './components/auth/AuthGuard';
-import { AuthProvider } from './contexts/AuthContext';
-import { SnackbarProvider } from './contexts/SnackbarContext';
+import React, { useEffect, useState } from "react";
+import { Routes, Route, Navigate } from "react-router-dom";
+import Sidebar from "./components/Sidebar";
+import Dashboard from "./pages/Dashboard";
+import Mods from "./pages/Mods";
+import Automation from "./pages/Automation";
+import Logs from "./pages/Logs";
+import Settings from "./pages/Settings";
+import { useSettingsStore } from "./store/settingsStore";
+import { useBackendStatus } from "./hooks/useBackendStatus";
+import ConnectionError from "./components/ConnectionError";
+import Loading from "./components/Loading";
 
 function App() {
-  const [darkMode, setDarkMode] = useState(() => {
-    // Get the user's preference from localStorage, default to system preference
-    const savedMode = localStorage.getItem('darkMode');
-    if (savedMode !== null) {
-      return savedMode === 'true';
-    }
-    return window.matchMedia('(prefers-color-scheme: dark)').matches;
-  });
-
-  const theme = createTheme({
-    palette: {
-      mode: darkMode ? 'dark' : 'light',
-      primary: {
-        main: '#1976d2',
-      },
-      secondary: {
-        main: '#dc004e',
-      },
-      background: {
-        default: darkMode ? '#121212' : '#f5f5f5',
-        paper: darkMode ? '#1e1e1e' : '#ffffff',
-      },
-    },
-    typography: {
-      fontFamily: '"Roboto", "Helvetica", "Arial", sans-serif',
-    },
-    components: {
-      MuiButton: {
-        styleOverrides: {
-          root: {
-            textTransform: 'none',
-          },
-        },
-      },
-    },
-  });
+  const { darkMode } = useSettingsStore();
+  const { isConnected, loading } = useBackendStatus();
+  const [isInitialized, setIsInitialized] = useState(false);
 
   useEffect(() => {
-    localStorage.setItem('darkMode', darkMode.toString());
+    // Apply dark mode class to document
+    if (darkMode) {
+      document.documentElement.classList.add("dark");
+    } else {
+      document.documentElement.classList.remove("dark");
+    }
+
+    // Set initialization after a short delay to prevent flash
+    const timer = setTimeout(() => {
+      setIsInitialized(true);
+    }, 500);
+
+    return () => clearTimeout(timer);
   }, [darkMode]);
 
+  if (!isInitialized || loading) {
+    return <Loading />;
+  }
+
+  if (!isConnected) {
+    return <ConnectionError />;
+  }
+
   return (
-    <ThemeProvider theme={theme}>
-      <CssBaseline />
-      <LocalizationProvider dateAdapter={AdapterDateFns} adapterLocale={fr}>
-        <AuthProvider>
-          <SnackbarProvider>
-            <Router>
-              <Routes>
-                <Route path="/login" element={<Login />} />
-                <Route
-                  path="/"
-                  element={
-                    <AuthGuard>
-                      <MainLayout darkMode={darkMode} setDarkMode={setDarkMode} />
-                    </AuthGuard>
-                  }
-                >
-                  <Route index element={<Navigate to="/dashboard" replace />} />
-                  <Route path="dashboard" element={<Dashboard />} />
-                  <Route path="students/*" element={<Students />} />
-                  <Route path="courses/*" element={<Courses />} />
-                  <Route path="settings" element={<Settings darkMode={darkMode} setDarkMode={setDarkMode} />} />
-                </Route>
-                <Route path="*" element={<Navigate to="/" replace />} />
-              </Routes>
-            </Router>
-          </SnackbarProvider>
-        </AuthProvider>
-      </LocalizationProvider>
-    </ThemeProvider>
+    <div className="flex h-screen bg-gray-100 dark:bg-factorio-darker text-gray-900 dark:text-gray-100">
+      <Sidebar />
+      <div className="flex-1 overflow-hidden">
+        <main className="h-full overflow-y-auto p-4">
+          <Routes>
+            <Route path="/" element={<Navigate to="/dashboard" replace />} />
+            <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/mods" element={<Mods />} />
+            <Route path="/automation" element={<Automation />} />
+            <Route path="/logs" element={<Logs />} />
+            <Route path="/settings" element={<Settings />} />
+            <Route path="*" element={<Navigate to="/dashboard" replace />} />
+          </Routes>
+        </main>
+      </div>
+    </div>
   );
 }
 
