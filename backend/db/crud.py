@@ -58,19 +58,19 @@ def delete_mod(db: Session, mod_id: int) -> bool:
     return True
 
 
-def get_rule(db: Session, rule_id: int) -> Optional[models.Rule]:
+def get_rule(db: Session, rule_id: int) -> Optional[models.AutomationRule]:
     """Get a rule by ID"""
-    return db.query(models.Rule).filter(models.Rule.id == rule_id).first()
+    return db.query(models.AutomationRule).filter(models.AutomationRule.id == rule_id).first()
 
 
-def get_rules(db: Session, skip: int = 0, limit: int = 100) -> List[models.Rule]:
+def get_rules(db: Session, skip: int = 0, limit: int = 100) -> List[models.AutomationRule]:
     """Get all rules with pagination"""
-    return db.query(models.Rule).offset(skip).limit(limit).all()
+    return db.query(models.AutomationRule).offset(skip).limit(limit).all()
 
 
-def create_rule(db: Session, rule: schemas.RuleCreate) -> models.Rule:
+def create_rule(db: Session, rule: schemas.RuleCreate) -> models.AutomationRule:
     """Create a new rule"""
-    db_rule = models.Rule(
+    db_rule = models.AutomationRule(
         name=rule.name,
         condition=rule.condition,
         action=rule.action,
@@ -83,9 +83,9 @@ def create_rule(db: Session, rule: schemas.RuleCreate) -> models.Rule:
     return db_rule
 
 
-def update_rule(db: Session, rule_id: int, rule_data: schemas.RuleUpdate) -> Optional[models.Rule]:
+def update_rule(db: Session, rule_id: int, rule_data: schemas.RuleUpdate) -> Optional[models.AutomationRule]:
     """Update a rule"""
-    db_rule = db.query(models.Rule).filter(models.Rule.id == rule_id).first()
+    db_rule = db.query(models.AutomationRule).filter(models.AutomationRule.id == rule_id).first()
     if not db_rule:
         return None
     
@@ -100,7 +100,7 @@ def update_rule(db: Session, rule_id: int, rule_data: schemas.RuleUpdate) -> Opt
 
 def delete_rule(db: Session, rule_id: int) -> bool:
     """Delete a rule"""
-    db_rule = db.query(models.Rule).filter(models.Rule.id == rule_id).first()
+    db_rule = db.query(models.AutomationRule).filter(models.AutomationRule.id == rule_id).first()
     if not db_rule:
         return False
     
@@ -164,3 +164,25 @@ def update_setting(db: Session, key: str, value: str) -> models.Setting:
     db.commit()
     db.refresh(setting)
     return setting
+
+def toggle_mod(db: Session, mod_id: int) -> Optional[models.Mod]:
+    """Toggle the is_active status of a mod"""
+    db_mod = db.query(models.Mod).filter(models.Mod.id == mod_id).first()
+    if not db_mod:
+        return None
+
+    db_mod.is_active = not db_mod.is_active
+    db.commit()
+    db.refresh(db_mod)
+    return db_mod
+
+def toggle_rule(db: Session, rule_id: int) -> Optional[models.AutomationRule]:
+    """Toggle the is_active status of a rule"""
+    db_rule = db.query(models.AutomationRule).filter(models.AutomationRule.id == rule_id).first()
+    if not db_rule:
+        return None
+
+    db_rule.is_active = not db_rule.is_active
+    db.commit()
+    db.refresh(db_rule)
+    return db_rule

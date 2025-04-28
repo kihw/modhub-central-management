@@ -148,3 +148,8 @@ class SettingsUpdate(BaseModel):
     automation: Optional[Dict[str, Any]] = None
     performance: Optional[Dict[str, Any]] = None
     ui: Optional[Dict[str, Any]] = None
+
+class ModToggle(BaseModel):
+    is_active: bool
+    mod_id: int = Field(..., description="ID of the mod to toggle")
+    

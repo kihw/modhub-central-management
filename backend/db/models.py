@@ -105,3 +105,10 @@ class Backup(Base):
     size_mb = Column(Float)
     is_automatic = Column(Boolean, default=False)
     description = Column(Text, nullable=True)
+
+class Setting(Base):
+    __tablename__ = "settings"
+
+    id = Column(Integer, primary_key=True, index=True)
+    key = Column(String, unique=True, index=True)
+    value = Column(String)

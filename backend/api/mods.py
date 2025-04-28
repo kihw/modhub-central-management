@@ -7,6 +7,7 @@ from typing import List, Optional
 from db.database import get_db
 from db import models  # Correction: remove the space
 from db import schemas  # Correction: remove the space
+from db.schemas import ModResponse, ModCreate, ModUpdate
 from db.crud import get_mods, get_mod, create_mod, update_mod, delete_mod, toggle_mod
 from core.mods.mod_manager import ModManager  # Maintenant ce sera trouvé
 

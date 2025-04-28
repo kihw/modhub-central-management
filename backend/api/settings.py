@@ -1,39 +1,43 @@
-import os
-from pathlib import Path
-from dotenv import load_dotenv
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
+from typing import Dict
 
-# Load environment variables from .env file
-load_dotenv()
+router = APIRouter()
 
-# Base directory
-BASE_DIR = Path(__file__).resolve().parent.parent.parent
+# In-memory fake settings storage (à remplacer par base de données plus tard)
+fake_settings_db: Dict[str, str] = {
+    "theme": "light",
+    "notifications_enabled": "true",
+    "auto_backup": "false"
+}
 
-# API settings
-API_V1_STR = "/api/v1"
-PROJECT_NAME = "DeviceControlHub"
+# Schéma pour mettre à jour un paramètre
+class SettingUpdate(BaseModel):
+    key: str
+    value: str
 
-# CORS settings
-CORS_ORIGINS = [
-    "http://localhost:3000",
-    "http://localhost:8668",
-    "http://localhost:8000",
-    "electron://localhost"
-]
+@router.get("/", response_model=Dict[str, str])
+async def get_all_settings():
+    """Récupérer tous les paramètres"""
+    return fake_settings_db
 
-# Database settings
-DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{BASE_DIR}/data/database.sqlite")
+@router.get("/{key}", response_model=str)
+async def get_setting(key: str):
+    """Récupérer un paramètre spécifique"""
+    if key not in fake_settings_db:
+        raise HTTPException(status_code=404, detail="Setting not found")
+    return fake_settings_db[key]
 
-# Security settings
-SECRET_KEY = os.getenv("SECRET_KEY", "dev_secret_key_change_in_production")
-ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", 60 * 24))  # 1 day
+@router.put("/", response_model=Dict[str, str])
+async def update_setting(update: SettingUpdate):
+    """Mettre à jour un paramètre"""
+    fake_settings_db[update.key] = update.value
+    return fake_settings_db
 
-# Logging configuration
-LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
-LOG_FILE = os.path.join(BASE_DIR, "data", "logs", "app.log")
-
-# Mod settings
-MODS_DIRECTORY = os.path.join(BASE_DIR, "data", "mods")
-RULES_DIRECTORY = os.path.join(BASE_DIR, "data", "rules")
-
-# Configuration file
-CONFIG_FILE = os.path.join(BASE_DIR, "data", "config.json")
+@router.delete("/{key}", response_model=Dict[str, str])
+async def delete_setting(key: str):
+    """Supprimer un paramètre"""
+    if key not in fake_settings_db:
+        raise HTTPException(status_code=404, detail="Setting not found")
+    del fake_settings_db[key]
+    return fake_settings_db
