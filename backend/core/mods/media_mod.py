@@ -1,253 +1,260 @@
+from typing import Dict, Any, Optional, List
 import logging
-from typing import Dict, Any, List, Optional
+import time
+from .mod_base import ModBase
 
-from ..device_control import DeviceController
-
-logger = logging.getLogger(__name__)
-
-class MediaMod:
+class MediaMod(ModBase):
     """
-    Media Mod controls lighting and devices to create the optimal 
-    environment for watching movies, playing games, or listening to music.
-    It can adjust lighting, control A/V equipment, and reduce distractions.
+    Mod qui optimise les paramètres audio et d'éclairage pour les applications multimédia.
+    Ajuste les paramètres selon le type de contenu (films, musique, vidéo-conférence...).
     """
     
-    def __init__(self, device_controller: DeviceController):
-        self.device_controller = device_controller
-        self.active = False
-        self.current_scene = None
-        self.settings = {}
-        self.scenes = {}
-        self.load_settings()
+    def __init__(self):
+        super().__init__(
+            name="Media Mod", 
+            description="Optimise les paramètres audio et d'éclairage pour le multimédia", 
+            priority=75  # Priorité entre Gaming (100) et Night (50)
+        )
         
-    def load_settings(self) -> None:
-        """Load media mod settings and scenes from database"""
-        try:
-            # Default settings if not found in DB
-            self.settings = {
-                "default_scene": "movie",
-                "affect_rooms": ["living_room"],
-                "auto_restore": True,
-                "pause_notifications": True
-            }
-            
-            # Default scenes
-            self.scenes = {
+        # Configuration par défaut
+        self.settings = {
+            "enable_audio_enhancement": True,
+            "enable_lighting_effects": True,
+            "content_profiles": {
                 "movie": {
-                    "lights": {
-                        "brightness": 10,
-                        "color": "blue",
-                        "enabled_lights": ["ambient"]
+                    "audio": {
+                        "equalizer": "movie",  # Profil d'égaliseur pour films
+                        "surround": True,      # Activer le son surround
+                        "volume_boost": 10,    # Boost de volume en %
                     },
-                    "devices": {
-                        "tv": {"power": True, "input": "hdmi1"},
-                        "soundbar": {"power": True, "volume": 60},
-                        "blinds": {"position": "closed"}
-                    }
-                },
-                "gaming": {
-                    "lights": {
-                        "brightness": 40,
-                        "color": "purple",
-                        "enabled_lights": ["overhead", "ambient"]
-                    },
-                    "devices": {
-                        "tv": {"power": True, "input": "hdmi2", "mode": "game"},
-                        "soundbar": {"power": True, "volume": 50},
-                        "blinds": {"position": "partial"}
+                    "display": {
+                        "brightness": 70,      # Pourcentage
+                        "contrast": 110,       # Pourcentage par rapport à la normale
+                        "saturation": 110,     # Pourcentage par rapport à la normale
+                        "ambient_lighting": "dynamic"  # Mode d'éclairage ambiant
                     }
                 },
                 "music": {
-                    "lights": {
-                        "brightness": 60,
-                        "color": "green",
-                        "color_mode": "flow",
-                        "enabled_lights": ["all"]
+                    "audio": {
+                        "equalizer": "music",  # Profil d'égaliseur pour musique
+                        "surround": False,     # Pas de surround pour la musique
+                        "volume_boost": 5,     # Boost de volume en %
                     },
-                    "devices": {
-                        "tv": {"power": False},
-                        "soundbar": {"power": True, "volume": 70, "eq": "music"},
-                        "blinds": {"position": "open"}
+                    "display": {
+                        "ambient_lighting": "rhythm"  # Éclairage au rythme de la musique
+                    }
+                },
+                "videoconf": {
+                    "audio": {
+                        "equalizer": "voice",  # Profil d'égaliseur pour voix
+                        "noise_cancellation": True,  # Réduction de bruit
+                        "volume_boost": 15,    # Boost de volume en %
+                    },
+                    "display": {
+                        "brightness": 85,      # Luminosité optimale pour webcam
+                        "ambient_lighting": "soft"  # Éclairage doux
                     }
                 }
-            }
-            
-            # TODO: Load from actual DB when implemented
-            logger.info("Media mod settings loaded")
-        except Exception as e:
-            logger.error(f"Error loading media mod settings: {e}")
+            },
+            "default_audio_device": "auto",  # 'auto' ou ID spécifique
+            "audio_transition_speed": "medium",  # slow, medium, fast
+        }
+        
+        # État actuel
+        self.current_content_type = None
+        self.applied_profile = None
     
-    def activate(self, scene_name: Optional[str] = None) -> bool:
+    def activate(self, context: Dict[str, Any] = None) -> bool:
         """
-        Activate media mode with the specified scene or default scene
+        Active le Media Mod en fonction du contexte.
         
         Args:
-            scene_name: The scene to activate (movie, gaming, music, etc.)
-        
-        Returns:
-            bool: Success status
+            context: Dictionnaire contenant le contexte du système, notamment les processus
+                    en cours d'exécution pour détecter les applications multimédias
         """
-        try:
-            # Use specified scene or default
-            scene_to_use = scene_name or self.settings.get("default_scene")
+        if not context:
+            self.logger.warning("Aucun contexte fourni pour Media Mod, utilisation des paramètres par défaut")
+            return self._apply_default_profile()
+        
+        # Détecter le type de contenu multimédia en cours
+        content_type = self._detect_media_content(context.get("processes", []))
+        
+        if content_type:
+            self.current_content_type = content_type
+            success = self._apply_content_profile(content_type)
+            if success:
+                self.is_active = True
+                self.logger.info(f"Media Mod activé pour: {content_type}")
+                return True
+        
+        # Si aucun contenu spécifique n'est détecté mais qu'on a détecté une activité multimédia
+        if context.get("is_media_activity", False):
+            return self._apply_default_profile()
+        
+        # Pas de contexte multimédia
+        if self.is_active:
+            self.logger.info("Plus d'activité multimédia détectée, désactivation de Media Mod")
+            return self.deactivate()
             
-            if scene_to_use not in self.scenes:
-                logger.error(f"Scene {scene_to_use} not found")
-                return False
-                
-            scene = self.scenes[scene_to_use]
-            affected_rooms = self.settings.get("affect_rooms", ["living_room"])
-            
-            # Save current state to restore later if auto_restore is enabled
-            if self.settings.get("auto_restore", True):
-                self._save_current_state(affected_rooms)
-                
-            # Configure lighting
-            light_config = scene.get("lights", {})
-            brightness = light_config.get("brightness", 50)
-            color = light_config.get("color")
-            enabled_lights = light_config.get("enabled_lights", ["all"])
-            
-            # Apply lighting changes
-            for room_name in affected_rooms:
-                lights = self._get_lights_in_room(room_name)
-                
-                for light in lights:
-                    # Skip lights not in enabled list, unless "all" is specified
-                    if "all" not in enabled_lights and light.name not in enabled_lights:
-                        self.device_controller.set_device_state(light.id, state=False)
-                        continue
-                        
-                    # Apply light settings
-                    light_params = {
-                        "state": True,
-                        "brightness": brightness
-                    }
-                    
-                    if color:
-                        light_params["color"] = color
-                        
-                    self.device_controller.set_device_state(light.id, **light_params)
-            
-            # Configure devices
-            device_config = scene.get("devices", {})
-            for device_name, device_settings in device_config.items():
-                device = self.device_controller.get_device_by_name(device_name)
-                if device:
-                    self.device_controller.set_device_state(device.id, **device_settings)
-            
-            # Update state
-            self.active = True
-            self.current_scene = scene_to_use
-            
-            if self.settings.get("pause_notifications", True):
-                # TODO: Implement notification pausing
-                pass
-                
-            logger.info(f"Media mod activated with scene: {scene_to_use}")
-            return True
-            
-        except Exception as e:
-            logger.error(f"Error activating media mod: {e}")
-            return False
+        self.logger.info("Pas d'activité multimédia détectée, Media Mod ne sera pas activé")
+        return False
     
     def deactivate(self) -> bool:
-        """Deactivate media mode and restore previous state if auto_restore enabled"""
-        if not self.active:
-            logger.info("Media mod already inactive")
+        """Désactive le Media Mod et restaure les paramètres par défaut."""
+        if not self.is_active:
             return True
-            
+        
         try:
-            affected_rooms = self.settings.get("affect_rooms", ["living_room"])
+            # Restaurer les paramètres audio et d'affichage par défaut
+            self.logger.info("Restauration des paramètres audio et d'affichage par défaut")
             
-            if self.settings.get("auto_restore", True):
-                self._restore_previous_state()
-            else:
-                # Just turn everything back to normal
-                for room_name in affected_rooms:
-                    lights = self._get_lights_in_room(room_name)
-                    
-                    for light in lights:
-                        self.device_controller.set_device_state(
-                            device_id=light.id,
-                            state=True,
-                            brightness=100,
-                            color="white"
-                        )
+            # Simulation de restauration des paramètres
+            time.sleep(0.5)  # Simuler un traitement
             
-            # Resume notifications if they were paused
-            if self.settings.get("pause_notifications", True):
-                # TODO: Resume notifications
-                pass
+            self.is_active = False
+            self.current_content_type = None
+            self.applied_profile = None
+            
+            self.logger.info("Media Mod désactivé avec succès")
+            return True
+        except Exception as e:
+            self.logger.error(f"Erreur lors de la désactivation de Media Mod: {e}")
+            return False
+    
+    def _detect_media_content(self, processes: List[Dict[str, Any]]) -> Optional[str]:
+        """
+        Détecte le type de contenu multimédia en cours d'utilisation.
+        
+        Args:
+            processes: Liste des processus en cours d'exécution
+            
+        Returns:
+            str: Type de contenu détecté ('movie', 'music', 'videoconf') ou None
+        """
+        # Dictionnaire des applications connues par type de contenu
+        media_apps = {
+            "movie": [
+                "vlc.exe", "mpc-hc.exe", "netflix.exe", "prime video.exe", 
+                "disneyplus.exe", "mpv.exe", "iina", "plex.exe"
+            ],
+            "music": [
+                "spotify.exe", "music.ui.exe", "itunes.exe", "foobar2000.exe", 
+                "winamp.exe", "tidal.exe", "deezer.exe"
+            ],
+            "videoconf": [
+                "zoom.exe", "teams.exe", "skype.exe", "discord.exe", 
+                "webex.exe", "slack.exe", "meet.google.com"
+            ]
+        }
+        
+        # Vérifier les processus en cours d'exécution
+        for process in processes:
+            process_name = process.get("name", "").lower()
+            
+            for content_type, apps in media_apps.items():
+                for app in apps:
+                    if app.lower() in process_name:
+                        return content_type
+        
+        return None
+    
+    def _apply_content_profile(self, content_type: str) -> bool:
+        """
+        Applique un profil spécifique pour un type de contenu.
+        
+        Args:
+            content_type: Type de contenu ('movie', 'music', 'videoconf')
+            
+        Returns:
+            bool: True si le profil a été appliqué avec succès
+        """
+        # Récupérer le profil pour ce type de contenu
+        content_profiles = self.settings.get("content_profiles", {})
+        profile = content_profiles.get(content_type, {})
+        
+        if not profile:
+            self.logger.warning(f"Aucun profil trouvé pour {content_type}, utilisation du profil par défaut")
+            return self._apply_default_profile()
+        
+        try:
+            # Application des paramètres audio
+            if self.settings["enable_audio_enhancement"] and "audio" in profile:
+                audio_settings = profile["audio"]
+                self.logger.info(f"Application des paramètres audio pour {content_type}: "
+                               f"Égaliseur={audio_settings.get('equalizer', 'standard')}, "
+                               f"Boost volume={audio_settings.get('volume_boost', 0)}%")
                 
-            self.active = False
-            self.current_scene = None
-            logger.info("Media mod deactivated")
-            return True
+                # Ici on intégrerait avec les APIs audio du système
+                # Simuler l'application des paramètres
+                time.sleep(0.3)
             
-        except Exception as e:
-            logger.error(f"Error deactivating media mod: {e}")
-            return False
-    
-    def add_scene(self, scene_name: str, scene_config: Dict[str, Any]) -> bool:
-        """Add a new scene or update an existing one"""
-        try:
-            self.scenes[scene_name] = scene_config
-            # TODO: Save to database
-            logger.info(f"Scene {scene_name} added/updated")
+            # Application des paramètres d'affichage
+            if self.settings["enable_lighting_effects"] and "display" in profile:
+                display_settings = profile["display"]
+                self.logger.info(f"Application des paramètres d'affichage pour {content_type}: "
+                               f"Luminosité={display_settings.get('brightness', 'inchangée')}, "
+                               f"Éclairage={display_settings.get('ambient_lighting', 'standard')}")
+                
+                # Ici on intégrerait avec les APIs d'affichage du système
+                # Simuler l'application des paramètres
+                time.sleep(0.3)
+            
+            self.applied_profile = content_type
             return True
         except Exception as e:
-            logger.error(f"Error adding scene {scene_name}: {e}")
+            self.logger.error(f"Erreur lors de l'application du profil pour {content_type}: {e}")
             return False
     
-    def remove_scene(self, scene_name: str) -> bool:
-        """Remove a scene"""
-        try:
-            if scene_name in self.scenes:
-                del self.scenes[scene_name]
-                # TODO: Delete from database
-                logger.info(f"Scene {scene_name} removed")
-                return True
-            logger.warning(f"Scene {scene_name} not found")
-            return False
-        except Exception as e:
-            logger.error(f"Error removing scene {scene_name}: {e}")
-            return False
-    
-    def update_settings(self, new_settings: Dict[str, Any]) -> bool:
-        """Update media mod settings"""
-        try:
-            self.settings.update(new_settings)
-            # TODO: Save to database
-            logger.info("Media mod settings updated")
-            return True
-        except Exception as e:
-            logger.error(f"Error updating media mod settings: {e}")
-            return False
-    
-    def _get_lights_in_room(self, room_name: str) -> List[Any]:
-        """Get all lights in the specified room"""
-        devices = self.device_controller.get_devices_by_room(room_name)
-        return [d for d in devices if d.type == "light"]
-    
-    def _save_current_state(self, rooms: List[str]) -> None:
-        """Save current state of devices to restore later"""
-        self.previous_state = {}
+    def _apply_default_profile(self) -> bool:
+        """
+        Applique le profil par défaut pour le multimédia.
         
-        for room_name in rooms:
-            devices = self.device_controller.get_devices_by_room(room_name)
+        Returns:
+            bool: True si le profil a été appliqué avec succès
+        """
+        try:
+            # Application des paramètres par défaut pour le multimédia
+            self.logger.info("Application du profil multimédia par défaut")
             
-            for device in devices:
-                # Save current state
-                self.previous_state[device.id] = self.device_controller.get_device_state(device.id)
+            # Simulation d'application des paramètres
+            if self.settings["enable_audio_enhancement"]:
+                self.logger.info("Application des paramètres audio par défaut")
+                time.sleep(0.2)
+                
+            if self.settings["enable_lighting_effects"]:
+                self.logger.info("Application des paramètres d'éclairage par défaut")
+                time.sleep(0.2)
+            
+            self.is_active = True
+            self.applied_profile = "default"
+            return True
+        except Exception as e:
+            self.logger.error(f"Erreur lors de l'application du profil par défaut: {e}")
+            return False
     
-    def _restore_previous_state(self) -> None:
-        """Restore devices to their previous state"""
-        if not hasattr(self, 'previous_state') or not self.previous_state:
-            logger.warning("No previous state to restore")
-            return
-            
-        for device_id, state in self.previous_state.items():
-            self.device_controller.set_device_state(device_id, **state)
+    def update_content_profile(self, content_type: str, profile: Dict[str, Any]) -> bool:
+        """
+        Met à jour ou crée un profil spécifique pour un type de contenu.
         
-        self.previous_state = {}
+        Args:
+            content_type: Type de contenu ('movie', 'music', 'videoconf')
+            profile: Paramètres du profil
+            
+        Returns:
+            bool: True si la mise à jour a réussi
+        """
+        try:
+            if "content_profiles" not in self.settings:
+                self.settings["content_profiles"] = {}
+                
+            self.settings["content_profiles"][content_type] = profile
+            self.logger.info(f"Profil mis à jour pour {content_type}")
+            
+            # Si ce type de contenu est actuellement en cours, appliquer les nouveaux paramètres
+            if self.is_active and self.current_content_type == content_type:
+                return self._apply_content_profile(content_type)
+                
+            return True
+        except Exception as e:
+            self.logger.error(f"Erreur lors de la mise à jour du profil pour {content_type}: {e}")
+            return False

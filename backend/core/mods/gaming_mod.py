@@ -1,160 +1,218 @@
-"""
-Gaming Mode Module
-Optimizes system configurations for the best gaming experience.
-"""
-
+from typing import Dict, Any, List, Optional
 import logging
-from typing import Dict, Any, Optional
-from pathlib import Path
-import json
-import asyncio
+from .mod_base import ModBase
+import time
 
-from ..device_control import DeviceManager
-from ...db import crud
-
-logger = logging.getLogger(__name__)
-
-class GamingMod:
+class GamingMod(ModBase):
     """
-    Gaming mode adjusts lighting, sound, and other settings for an optimal gaming experience.
-    This includes turning on LED backlighting, adjusting audio settings, and potential 
-    integration with game APIs for responsive lighting effects.
+    Mod optimisant les périphériques pour le gaming en fonction du jeu détecté.
+    Ajuste: DPI souris, couleurs RGB, profils clavier, etc.
     """
     
-    def __init__(self, device_manager: DeviceManager):
-        self.device_manager = device_manager
-        self.active = False
-        self.config_path = Path("data/mods/gaming_config.json")
-        self.config = self._load_config()
+    def __init__(self):
+        super().__init__(
+            name="Gaming Mod", 
+            description="Optimise vos périphériques pour le gaming", 
+            priority=100  # Priorité élevée
+        )
         
-    def _load_config(self) -> Dict[str, Any]:
-        """Load gaming mode configuration settings."""
-        if not self.config_path.exists():
-            default_config = {
-                "led_brightness": 80,
-                "led_color": "#3080FF",  # Gaming blue
-                "audio_boost": True,
-                "notification_silence": True,
-                "preset_scenes": {
-                    "fps": {"led_color": "#FF3030", "led_pattern": "pulse"},
-                    "rpg": {"led_color": "#30FF80", "led_pattern": "ambient"},
-                    "racing": {"led_color": "#FFFF30", "led_pattern": "chase"}
-                }
+        # Configuration par défaut
+        self.settings = {
+            "default_dpi": 800,
+            "default_polling_rate": 1000,
+            "enable_rgb": True,
+            "game_profiles": {},  # Sera rempli avec des profils spécifiques aux jeux
+            "peripherals": {
+                "keyboard": {"enabled": True},
+                "mouse": {"enabled": True},
+                "headset": {"enabled": True},
+                "monitor": {"enabled": True}
             }
-            self.config_path.parent.mkdir(parents=True, exist_ok=True)
-            with open(self.config_path, 'w') as f:
-                json.dump(default_config, f, indent=2)
-            return default_config
+        }
         
-        try:
-            with open(self.config_path, 'r') as f:
-                return json.load(f)
-        except Exception as e:
-            logger.error(f"Failed to load gaming mode config: {e}")
-            return {}
-
-    async def activate(self, preset: Optional[str] = None) -> bool:
+        # État actuel
+        self.current_game = None
+        self.applied_profile = None
+    
+    def activate(self, context: Dict[str, Any] = None) -> bool:
         """
-        Activate gaming mode with optional preset
+        Active le mode gaming en fonction du contexte.
         
         Args:
-            preset: Optional preset name (fps, rpg, racing, etc.)
+            context: Dictionnaire contenant le contexte du système, notamment les processus en cours
+                    d'exécution pour détecter les jeux
+        """
+        if not context:
+            self.logger.warning("Aucun contexte fourni pour Gaming Mod, utilisation des paramètres par défaut")
+            return self._apply_default_profile()
+        
+        # Détecter le jeu en cours d'exécution
+        detected_game = self._detect_game(context.get("processes", []))
+        
+        if detected_game:
+            self.current_game = detected_game
+            success = self._apply_game_profile(detected_game)
+            if success:
+                self.is_active = True
+                self.logger.info(f"Gaming Mod activé pour: {detected_game}")
+                return True
+        
+        # Si aucun jeu spécifique n'est détecté mais qu'on a détecté une activité gaming
+        if context.get("is_gaming_activity", False):
+            return self._apply_default_profile()
+        
+        # Pas de contexte de jeu
+        self.logger.info("Pas de jeu détecté, Gaming Mod ne sera pas activé")
+        return False
+    
+    def deactivate(self) -> bool:
+        """Désactive le mode gaming et restaure les paramètres par défaut."""
+        if not self.is_active:
+            return True
+        
+        try:
+            # Restaurer les paramètres par défaut du système pour les périphériques
+            # (Ici on simulerait l'interaction avec les SDK des périphériques)
+            self.logger.info("Restauration des paramètres par défaut pour les périphériques")
+            
+            # Simulation de restauration des paramètres
+            time.sleep(0.5)  # Simuler un traitement
+            
+            self.is_active = False
+            self.current_game = None
+            self.applied_profile = None
+            
+            self.logger.info("Gaming Mod désactivé avec succès")
+            return True
+        except Exception as e:
+            self.logger.error(f"Erreur lors de la désactivation de Gaming Mod: {e}")
+            return False
+    
+    def _detect_game(self, processes: List[Dict[str, Any]]) -> Optional[str]:
+        """
+        Détecte un jeu parmi les processus en cours d'exécution.
+        
+        Args:
+            processes: Liste des processus en cours d'exécution
             
         Returns:
-            bool: Success status
+            str: Nom du jeu détecté ou None
+        """
+        # Dictionnaire des noms de processus connus pour les jeux
+        game_processes = {
+            "csgo.exe": "Counter-Strike: Global Offensive",
+            "valorant.exe": "Valorant",
+            "overwatch.exe": "Overwatch",
+            "rocketleague.exe": "Rocket League",
+            "gta5.exe": "Grand Theft Auto V",
+            "FortniteClient-Win64-Shipping.exe": "Fortnite",
+            "r5apex.exe": "Apex Legends",
+            "Cyberpunk2077.exe": "Cyberpunk 2077",
+            # Ajouter d'autres jeux au besoin
+        }
+        
+        # Vérifier si l'un des processus en cours correspond à un jeu connu
+        for process in processes:
+            process_name = process.get("name", "").lower()
+            for game_process, game_name in game_processes.items():
+                if game_process.lower() in process_name:
+                    return game_name
+        
+        return None
+    
+    def _apply_game_profile(self, game_name: str) -> bool:
+        """
+        Applique un profil spécifique pour un jeu.
+        
+        Args:
+            game_name: Nom du jeu détecté
+            
+        Returns:
+            bool: True si le profil a été appliqué avec succès
+        """
+        # Récupérer le profil pour ce jeu ou utiliser le profil par défaut
+        game_profiles = self.settings.get("game_profiles", {})
+        profile = game_profiles.get(game_name, {})
+        
+        if not profile:
+            self.logger.info(f"Aucun profil spécifique pour {game_name}, utilisation du profil par défaut")
+            return self._apply_default_profile()
+        
+        try:
+            # Ici on appliquerait réellement les paramètres aux périphériques
+            # en utilisant les SDK appropriés
+            
+            # Appliquer les paramètres de la souris
+            mouse_settings = profile.get("mouse", {})
+            if mouse_settings and self.settings["peripherals"]["mouse"]["enabled"]:
+                dpi = mouse_settings.get("dpi", self.settings["default_dpi"])
+                polling_rate = mouse_settings.get("polling_rate", self.settings["default_polling_rate"])
+                self.logger.info(f"Application des paramètres souris: DPI={dpi}, Polling={polling_rate}")
+                # Simuler l'appel au SDK de la souris
+            
+            # Appliquer les paramètres du clavier
+            keyboard_settings = profile.get("keyboard", {})
+            if keyboard_settings and self.settings["peripherals"]["keyboard"]["enabled"]:
+                rgb_profile = keyboard_settings.get("rgb_profile", "default")
+                macro_profile = keyboard_settings.get("macro_profile", "default")
+                self.logger.info(f"Application des paramètres clavier: RGB={rgb_profile}, Macros={macro_profile}")
+                # Simuler l'appel au SDK du clavier
+            
+            # Appliquer d'autres paramètres selon les périphériques...
+            
+            self.applied_profile = game_name
+            return True
+        except Exception as e:
+            self.logger.error(f"Erreur lors de l'application du profil pour {game_name}: {e}")
+            return False
+    
+    def _apply_default_profile(self) -> bool:
+        """
+        Applique le profil par défaut pour le gaming.
+        
+        Returns:
+            bool: True si le profil a été appliqué avec succès
         """
         try:
-            # Base configuration
-            settings = {
-                "brightness": self.config.get("led_brightness", 80),
-                "color": self.config.get("led_color", "#3080FF"),
-                "pattern": "solid"
-            }
+            # Application des paramètres par défaut
+            default_dpi = self.settings["default_dpi"]
+            default_polling = self.settings["default_polling_rate"]
             
-            # Apply preset if specified
-            if preset and preset in self.config.get("preset_scenes", {}):
-                preset_settings = self.config["preset_scenes"][preset]
-                settings.update(preset_settings)
+            self.logger.info(f"Application du profil gaming par défaut: DPI={default_dpi}, Polling={default_polling}")
             
-            # Configure lighting
-            await self.device_manager.set_lights(
-                brightness=settings["brightness"],
-                color=settings["color"],
-                pattern=settings.get("pattern", "solid")
-            )
+            # Simulation d'application des paramètres
+            time.sleep(0.5)
             
-            # Configure audio
-            if self.config.get("audio_boost", False):
-                await self.device_manager.set_audio(volume=80, equalizer="gaming")
-                
-            # Silence notifications if configured
-            if self.config.get("notification_silence", False):
-                await self.device_manager.set_notifications(enabled=False)
-            
-            # Log activation
-            await crud.create_mod_log(
-                mod_name="gaming",
-                status="activated",
-                settings=settings
-            )
-            
-            self.active = True
-            logger.info(f"Gaming mode activated with settings: {settings}")
+            self.is_active = True
+            self.applied_profile = "default"
             return True
-            
         except Exception as e:
-            logger.error(f"Failed to activate gaming mode: {e}")
+            self.logger.error(f"Erreur lors de l'application du profil par défaut: {e}")
             return False
     
-    async def deactivate(self) -> bool:
-        """Deactivate gaming mode and restore normal settings"""
+    def update_game_profile(self, game_name: str, profile: Dict[str, Any]) -> bool:
+        """
+        Met à jour ou crée un profil spécifique pour un jeu.
+        
+        Args:
+            game_name: Nom du jeu
+            profile: Paramètres du profil
+            
+        Returns:
+            bool: True si la mise à jour a réussi
+        """
         try:
-            # Restore default lighting
-            await self.device_manager.set_lights(
-                brightness=50,
-                color="#FFFFFF",
-                pattern="solid"
-            )
-            
-            # Restore audio settings
-            await self.device_manager.set_audio(volume=50, equalizer="normal")
-            
-            # Re-enable notifications
-            await self.device_manager.set_notifications(enabled=True)
-            
-            # Log deactivation
-            await crud.create_mod_log(
-                mod_name="gaming",
-                status="deactivated",
-                settings={}
-            )
-            
-            self.active = False
-            logger.info("Gaming mode deactivated")
-            return True
-            
-        except Exception as e:
-            logger.error(f"Failed to deactivate gaming mode: {e}")
-            return False
-    
-    async def update_config(self, new_config: Dict[str, Any]) -> bool:
-        """Update the gaming mode configuration"""
-        try:
-            # Merge new config with existing
-            self.config.update(new_config)
-            
-            # Save to file
-            with open(self.config_path, 'w') as f:
-                json.dump(self.config, f, indent=2)
+            if "game_profiles" not in self.settings:
+                self.settings["game_profiles"] = {}
                 
-            # If already active, reapply settings
-            if self.active:
-                await self.deactivate()
-                await self.activate()
-                
-            logger.info(f"Gaming mode config updated: {new_config}")
-            return True
+            self.settings["game_profiles"][game_name] = profile
+            self.logger.info(f"Profil mis à jour pour {game_name}")
             
+            # Si ce jeu est actuellement en cours, appliquer les nouveaux paramètres
+            if self.is_active and self.current_game == game_name:
+                return self._apply_game_profile(game_name)
+                
+            return True
         except Exception as e:
-            logger.error(f"Failed to update gaming mode config: {e}")
+            self.logger.error(f"Erreur lors de la mise à jour du profil pour {game_name}: {e}")
             return False
