@@ -2,7 +2,7 @@ from sqlalchemy.orm import Session
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 
-from db. import models, schemas
+from db import models, schemas
 
 
 def get_mod(db: Session, mod_id: int) -> Optional[models.Mod]:

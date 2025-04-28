@@ -17,6 +17,7 @@ class NightMod:
         self.device_controller = device_controller
         self.active = False
         self.settings = {}
+        self.logger = logging.getLogger(__name__)
         self.load_settings()
         
     def load_settings(self) -> None:

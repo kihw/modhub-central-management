@@ -24,11 +24,11 @@ export default defineConfig({
       '@': resolve(__dirname, 'src'),
       '@components': resolve(__dirname, 'src/components'),
       '@pages': resolve(__dirname, 'src/pages'),
-      '@assets': resolve(__dirname, 'src/assets'),
+      '@services': resolve(__dirname, 'src/services'),
+      '@store': resolve(__dirname, 'src/redux'),
       '@utils': resolve(__dirname, 'src/utils'),
       '@hooks': resolve(__dirname, 'src/hooks'),
-      '@context': resolve(__dirname, 'src/context'),
-      '@services': resolve(__dirname, 'src/services')
+      '@context': resolve(__dirname, 'src/context')
     }
   },
   build: {

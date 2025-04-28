@@ -1,3 +1,4 @@
+from backend.db import schemas
 from fastapi import APIRouter, HTTPException, Depends, status
 from sqlalchemy.orm import Session
 from typing import List, Optional
@@ -53,22 +54,39 @@ async def delete_existing_mod(mod_id: int, db: Session = Depends(get_db)):
     return {"detail": "Mod deleted successfully"}
 
 @router.post("/{mod_id}/toggle", response_model=ModResponse)
-async def toggle_mod_status(mod_id: int, db: Session = Depends(get_db)):
+async def toggle_mod_status(
+    mod_id: int, 
+    toggle_data: schemas.ModToggle, 
+    db: Session = Depends(get_db)
+):
     """Toggle a mod's active status"""
     db_mod = get_mod(db, mod_id=mod_id)
     if db_mod is None:
         raise HTTPException(status_code=404, detail="Mod not found")
     
-    updated_mod = toggle_mod(db=db, mod_id=mod_id)
+    updated_mod = toggle_mod(db=db, mod_id=mod_id, is_active=toggle_data.enabled)
     
     # Apply changes to running system
     if updated_mod.is_active:
-        mod_manager.activate_mod(updated_mod.type, updated_mod.config)
+        try:
+            mod_manager.activate_mod(updated_mod.type, updated_mod.config)
+        except Exception as e:
+            logger.error(f"Error activating mod: {str(e)}")
+            raise HTTPException(
+                status_code=500, 
+                detail=f"Failed to activate mod: {str(e)}"
+            )
     else:
-        mod_manager.deactivate_mod(updated_mod.type)
+        try:
+            mod_manager.deactivate_mod(updated_mod.type)
+        except Exception as e:
+            logger.error(f"Error deactivating mod: {str(e)}")
+            raise HTTPException(
+                status_code=500, 
+                detail=f"Failed to deactivate mod: {str(e)}"
+            )
         
     return updated_mod
-
 @router.post("/{mod_id}/apply", response_model=ModResponse)
 async def apply_mod(mod_id: int, db: Session = Depends(get_db)):
     """Apply a mod's settings without changing its saved active status"""

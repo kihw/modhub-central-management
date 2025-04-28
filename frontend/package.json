@@ -64,8 +64,8 @@
     "wait-on": "^7.0.1"
   },
   "build": {
-    "appId": "com.seoanalyzer.app",
-    "productName": "SEO Analyzer",
+    "appId": "com.modhub.central",
+    "productName": "ModHub Central",
     "files": [
       "build/**/*",
       "electron/**/*",
@@ -75,7 +75,7 @@
       "buildResources": "assets"
     },
     "mac": {
-      "category": "public.app-category.business",
+      "category": "public.app-category.utilities",
       "icon": "assets/icon.icns"
     },
     "win": {
@@ -83,7 +83,7 @@
     },
     "linux": {
       "icon": "assets/icon.png",
-      "category": "Office",
+      "category": "Utility",
       "target": [
         "AppImage",
         "deb"
