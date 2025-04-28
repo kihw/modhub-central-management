@@ -1,7 +1,7 @@
 from typing import Dict, Any, Optional, List
 import logging
 import time
-from .mod_base import ModBase
+from core.mods.mod_base import ModBase
 
 class MediaMod(ModBase):
     """

@@ -1,167 +1,140 @@
-const fontWeights = {
-  thin: "100",
-  extralight: "200",
-  light: "300",
-  normal: "400",
-  medium: "500",
-  semibold: "600",
-  bold: "700",
-  extrabold: "800",
-  black: "900",
+/**
+ * ModHub Central - Font Configuration
+ * 
+ * This file contains all font definitions for the application.
+ * We use Inter as our primary font family with various weights.
+ */
+
+import { css } from 'styled-components';
+
+// Font face definitions
+export const fontFaces = css`
+  @font-face {
+    font-family: 'Inter';
+    font-style: normal;
+    font-weight: 300;
+    src: url('../assets/fonts/Inter-Light.woff2') format('woff2'),
+         url('../assets/fonts/Inter-Light.woff') format('woff');
+    font-display: swap;
+  }
+
+  @font-face {
+    font-family: 'Inter';
+    font-style: normal;
+    font-weight: 400;
+    src: url('../assets/fonts/Inter-Regular.woff2') format('woff2'),
+         url('../assets/fonts/Inter-Regular.woff') format('woff');
+    font-display: swap;
+  }
+
+  @font-face {
+    font-family: 'Inter';
+    font-style: normal;
+    font-weight: 500;
+    src: url('../assets/fonts/Inter-Medium.woff2') format('woff2'),
+         url('../assets/fonts/Inter-Medium.woff') format('woff');
+    font-display: swap;
+  }
+
+  @font-face {
+    font-family: 'Inter';
+    font-style: normal;
+    font-weight: 600;
+    src: url('../assets/fonts/Inter-SemiBold.woff2') format('woff2'),
+         url('../assets/fonts/Inter-SemiBold.woff') format('woff');
+    font-display: swap;
+  }
+
+  @font-face {
+    font-family: 'Inter';
+    font-style: normal;
+    font-weight: 700;
+    src: url('../assets/fonts/Inter-Bold.woff2') format('woff2'),
+         url('../assets/fonts/Inter-Bold.woff') format('woff');
+    font-display: swap;
+  }
+
+  // Monospace font for code blocks and technical content
+  @font-face {
+    font-family: 'JetBrains Mono';
+    font-style: normal;
+    font-weight: 400;
+    src: url('../assets/fonts/JetBrainsMono-Regular.woff2') format('woff2'),
+         url('../assets/fonts/JetBrainsMono-Regular.woff') format('woff');
+    font-display: swap;
+  }
+`;
+
+// Font-related constants
+export const fonts = {
+  primary: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
+  mono: "'JetBrains Mono', monospace",
 };
 
-const fontSizes = {
-  xs: "0.75rem", // 12px
-  sm: "0.875rem", // 14px
-  base: "1rem", // 16px
-  lg: "1.125rem", // 18px
-  xl: "1.25rem", // 20px
-  "2xl": "1.5rem", // 24px
-  "3xl": "1.875rem", // 30px
-  "4xl": "2.25rem", // 36px
-  "5xl": "3rem", // 48px
-  "6xl": "3.75rem", // 60px
-  "7xl": "4.5rem", // 72px
-  "8xl": "6rem", // 96px
-  "9xl": "8rem", // 128px
+// Font size system
+export const fontSizes = {
+  xs: '0.75rem',    // 12px
+  sm: '0.875rem',   // 14px
+  base: '1rem',     // 16px
+  md: '1.125rem',   // 18px
+  lg: '1.25rem',    // 20px
+  xl: '1.5rem',     // 24px
+  '2xl': '1.875rem', // 30px
+  '3xl': '2.25rem',  // 36px
+  '4xl': '3rem',     // 48px
 };
 
-const lineHeights = {
-  none: "1",
-  tight: "1.25",
-  snug: "1.375",
-  normal: "1.5",
-  relaxed: "1.625",
-  loose: "2",
+// Font weights
+export const fontWeights = {
+  light: 300,
+  normal: 400,
+  medium: 500,
+  semibold: 600,
+  bold: 700,
 };
 
-const letterSpacings = {
-  tighter: "-0.05em",
-  tight: "-0.025em",
-  normal: "0",
-  wide: "0.025em",
-  wider: "0.05em",
-  widest: "0.1em",
+// Line heights
+export const lineHeights = {
+  tight: 1.2,
+  normal: 1.5,
+  relaxed: 1.75,
 };
 
-const fontFamilies = {
-  sans: [
-    "Inter",
-    "ui-sans-serif",
-    "system-ui",
-    "-apple-system",
-    "BlinkMacSystemFont",
-    '"Segoe UI"',
-    "Roboto",
-    '"Helvetica Neue"',
-    "Arial",
-    '"Noto Sans"',
-    "sans-serif",
-    '"Apple Color Emoji"',
-    '"Segoe UI Emoji"',
-    '"Segoe UI Symbol"',
-    '"Noto Color Emoji"',
-  ].join(","),
-  serif: [
-    "ui-serif",
-    "Georgia",
-    "Cambria",
-    '"Times New Roman"',
-    "Times",
-    "serif",
-  ].join(","),
-  mono: [
-    "ui-monospace",
-    "SFMono-Regular",
-    "Menlo",
-    "Monaco",
-    "Consolas",
-    '"Liberation Mono"',
-    '"Courier New"',
-    "monospace",
-  ].join(","),
+// Letter spacings
+export const letterSpacings = {
+  tighter: '-0.05em',
+  tight: '-0.025em', 
+  normal: '0',
+  wide: '0.025em',
+  wider: '0.05em',
 };
 
-const typographyVariants = {
-  h1: {
-    fontFamily: "sans",
-    fontSize: "4xl",
-    fontWeight: "bold",
-    lineHeight: "tight",
-    letterSpacing: "tight",
-  },
-  h2: {
-    fontFamily: "sans",
-    fontSize: "3xl",
-    fontWeight: "bold",
-    lineHeight: "tight",
-    letterSpacing: "tight",
-  },
-  h3: {
-    fontFamily: "sans",
-    fontSize: "2xl",
-    fontWeight: "semibold",
-    lineHeight: "tight",
-    letterSpacing: "normal",
-  },
-  h4: {
-    fontFamily: "sans",
-    fontSize: "xl",
-    fontWeight: "semibold",
-    lineHeight: "tight",
-    letterSpacing: "normal",
-  },
-  h5: {
-    fontFamily: "sans",
-    fontSize: "lg",
-    fontWeight: "semibold",
-    lineHeight: "tight",
-    letterSpacing: "normal",
-  },
-  h6: {
-    fontFamily: "sans",
-    fontSize: "base",
-    fontWeight: "semibold",
-    lineHeight: "tight",
-    letterSpacing: "normal",
-  },
-  body1: {
-    fontFamily: "sans",
-    fontSize: "base",
-    fontWeight: "normal",
-    lineHeight: "normal",
-    letterSpacing: "normal",
-  },
-  body2: {
-    fontFamily: "sans",
-    fontSize: "sm",
-    fontWeight: "normal",
-    lineHeight: "normal",
-    letterSpacing: "normal",
-  },
-  caption: {
-    fontFamily: "sans",
-    fontSize: "xs",
-    fontWeight: "normal",
-    lineHeight: "normal",
-    letterSpacing: "normal",
-  },
-  button: {
-    fontFamily: "sans",
-    fontSize: "sm",
-    fontWeight: "medium",
-    lineHeight: "none",
-    letterSpacing: "wide",
-  },
+// Helper function to calculate fluid font sizes between viewport widths
+export const fluidFontSize = (minFontSize, maxFontSize, minScreenWidth, maxScreenWidth) => {
+  const minFont = parseFloat(minFontSize);
+  const maxFont = parseFloat(maxFontSize);
+  const minScreen = parseFloat(minScreenWidth);
+  const maxScreen = parseFloat(maxScreenWidth);
+  
+  return `
+    font-size: ${minFontSize};
+    
+    @media screen and (min-width: ${minScreenWidth}) {
+      font-size: calc(${minFont}rem + (${maxFont} - ${minFont}) * ((100vw - ${minScreen}rem) / (${maxScreen} - ${minScreen})));
+    }
+    
+    @media screen and (min-width: ${maxScreenWidth}) {
+      font-size: ${maxFontSize};
+    }
+  `;
 };
 
-const fonts = {
-  weights: fontWeights,
-  sizes: fontSizes,
+export default {
+  fontFaces,
+  fonts,
+  fontSizes,
+  fontWeights,
   lineHeights,
   letterSpacings,
-  families: fontFamilies,
-  variants: typographyVariants,
+  fluidFontSize
 };
-
-export default fonts;

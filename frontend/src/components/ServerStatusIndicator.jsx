@@ -1,43 +1,62 @@
-import React from "react";
-import { Box, Typography, Chip } from "@mui/material";
-import {
-  CheckCircle as CheckIcon,
-  Cancel as CancelIcon,
-} from "@mui/icons-material";
-import { useBackendStatus } from "../hooks/useBackendStatus";
+import React, { useState, useEffect } from 'react';
+import axios from 'axios';
+import { BsCircleFill } from 'react-icons/bs';
+import { Tooltip } from '@material-tailwind/react';
 
-const ServerStatusIndicator = () => {
-  const { isConnected, loading } = useBackendStatus();
+const ServerStatusIndicator = ({ className = '' }) => {
+  const [status, setStatus] = useState('checking');
+  const [latency, setLatency] = useState(null);
+  const [tooltipContent, setTooltipContent] = useState('Vérification de la connexion au serveur...');
 
-  let status = "Indéterminé";
-  let color = "default";
-  let icon = null;
+  useEffect(() => {
+    const checkServerStatus = async () => {
+      try {
+        const startTime = Date.now();
+        const response = await axios.get('http://localhost:8000/api/health', { timeout: 3000 });
+        const endTime = Date.now();
+        
+        if (response.status === 200) {
+          setStatus('online');
+          setLatency(endTime - startTime);
+          setTooltipContent(`Serveur connecté (${endTime - startTime}ms)`);
+        } else {
+          setStatus('error');
+          setTooltipContent('Erreur de connexion au serveur');
+        }
+      } catch (error) {
+        setStatus('offline');
+        setTooltipContent('Serveur déconnecté');
+      }
+    };
 
-  if (loading) {
-    status = "Vérification...";
-  } else if (isConnected) {
-    status = "Connecté";
-    color = "success";
-    icon = <CheckIcon />;
-  } else {
-    status = "Déconnecté";
-    color = "error";
-    icon = <CancelIcon />;
-  }
+    checkServerStatus();
+    const interval = setInterval(checkServerStatus, 10000);
+    
+    return () => clearInterval(interval);
+  }, []);
+
+  const getStatusColor = () => {
+    switch (status) {
+      case 'online':
+        return 'text-green-500';
+      case 'offline':
+        return 'text-red-500';
+      case 'error':
+        return 'text-amber-500';
+      default:
+        return 'text-gray-400';
+    }
+  };
 
   return (
-    <Box display="flex" alignItems="center">
-      <Typography variant="body1" mr={1}>
-        Serveur :
-      </Typography>
-      <Chip
-        icon={icon}
-        label={status}
-        color={color}
-        variant="outlined"
-        sx={{ fontWeight: "bold" }}
-      />
-    </Box>
+    <Tooltip content={tooltipContent} placement="left">
+      <div className={`flex items-center space-x-1 ${className}`}>
+        <BsCircleFill className={`${getStatusColor()} h-2.5 w-2.5 animate-pulse`} />
+        <span className="text-xs text-gray-400">
+          {status === 'online' && latency !== null ? `${latency}ms` : ''}
+        </span>
+      </div>
+    </Tooltip>
   );
 };
 

@@ -1,6 +1,6 @@
 from typing import Dict, Any, List, Optional
 import logging
-from .mod_base import ModBase
+from core.mods.mod_base import ModBase
 import time
 
 class GamingMod(ModBase):

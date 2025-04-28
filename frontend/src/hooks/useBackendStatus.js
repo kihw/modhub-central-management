@@ -1,31 +1,108 @@
-import { useEffect, useState } from "react";
+import { useState, useEffect } from 'react';
+import axios from 'axios';
 
-export const useBackendStatus = () => {
-  const [isConnected, setIsConnected] = useState(false);
-  const [loading, setLoading] = useState(true);
+/**
+ * Custom hook to check and monitor backend API availability
+ * @param {string} url - Backend API URL
+ * @param {number} interval - Polling interval in milliseconds
+ * @returns {Object} Object containing backend status information
+ */
+const useBackendStatus = (url = 'http://localhost:8000', interval = 5000) => {
+  const [status, setStatus] = useState({
+    isConnected: false,
+    isChecking: true,
+    lastChecked: null,
+    version: null,
+    error: null,
+    services: {
+      processScan: false,
+      modEngine: false,
+      deviceControl: false
+    }
+  });
 
   useEffect(() => {
-    const checkBackend = async () => {
+    const checkBackendStatus = async () => {
       try {
-        const response = await fetch("/api/status");
-        if (response.ok) {
-          setIsConnected(true);
+        setStatus(prev => ({ ...prev, isChecking: true }));
+        
+        const response = await axios.get(`${url}/api/status`, { timeout: 3000 });
+        
+        if (response.status === 200) {
+          setStatus({
+            isConnected: true,
+            isChecking: false,
+            lastChecked: new Date(),
+            version: response.data.version || 'unknown',
+            error: null,
+            services: {
+              processScan: response.data.services?.processScan || false,
+              modEngine: response.data.services?.modEngine || false,
+              deviceControl: response.data.services?.deviceControl || false
+            }
+          });
         } else {
-          setIsConnected(false);
+          throw new Error('Backend returned non-200 status');
         }
       } catch (error) {
-        setIsConnected(false);
-      } finally {
-        setLoading(false);
+        setStatus({
+          isConnected: false,
+          isChecking: false,
+          lastChecked: new Date(),
+          version: null,
+          error: error.message || 'Failed to connect to backend',
+          services: {
+            processScan: false,
+            modEngine: false,
+            deviceControl: false
+          }
+        });
       }
     };
 
-    checkBackend();
+    // Initial check
+    checkBackendStatus();
 
-    // Optionnel : rafraîchir toutes les X secondes
-    const interval = setInterval(checkBackend, 10000); // 10 sec
-    return () => clearInterval(interval);
-  }, []);
+    // Set up regular polling
+    const intervalId = setInterval(checkBackendStatus, interval);
 
-  return { isConnected, loading };
+    // Clean up interval on unmount
+    return () => clearInterval(intervalId);
+  }, [url, interval]);
+
+  const reconnect = () => {
+    setStatus(prev => ({ ...prev, isChecking: true }));
+    // Force a new check immediately
+    axios.get(`${url}/api/status`, { timeout: 3000 })
+      .then(response => {
+        if (response.status === 200) {
+          setStatus({
+            isConnected: true,
+            isChecking: false,
+            lastChecked: new Date(),
+            version: response.data.version || 'unknown',
+            error: null,
+            services: {
+              processScan: response.data.services?.processScan || false,
+              modEngine: response.data.services?.modEngine || false,
+              deviceControl: response.data.services?.deviceControl || false
+            }
+          });
+        }
+      })
+      .catch(error => {
+        setStatus(prev => ({
+          ...prev,
+          isChecking: false,
+          error: error.message || 'Failed to reconnect to backend'
+        }));
+      });
+  };
+
+  return {
+    ...status,
+    reconnect
+  };
 };
+
+export default useBackendStatus;

@@ -1,224 +1,321 @@
-import colors from "./colors";
-import fonts from "./fonts";
+import { createTheme, responsiveFontSizes } from '@mui/material/styles';
 
-// Spacing system
-const spacing = {
-  0: "0",
-  px: "1px",
-  0.5: "0.125rem",
-  1: "0.25rem",
-  1.5: "0.375rem",
-  2: "0.5rem",
-  2.5: "0.625rem",
-  3: "0.75rem",
-  3.5: "0.875rem",
-  4: "1rem",
-  5: "1.25rem",
-  6: "1.5rem",
-  7: "1.75rem",
-  8: "2rem",
-  9: "2.25rem",
-  10: "2.5rem",
-  11: "2.75rem",
-  12: "3rem",
-  14: "3.5rem",
-  16: "4rem",
-  20: "5rem",
-  24: "6rem",
-  28: "7rem",
-  32: "8rem",
-  36: "9rem",
-  40: "10rem",
-  44: "11rem",
-  48: "12rem",
-  52: "13rem",
-  56: "14rem",
-  60: "15rem",
-  64: "16rem",
-  72: "18rem",
-  80: "20rem",
-  96: "24rem",
-};
-
-// Breakpoints
-const breakpoints = {
-  xs: "320px",
-  sm: "640px",
-  md: "768px",
-  lg: "1024px",
-  xl: "1280px",
-  "2xl": "1536px",
-};
-
-// Shadows
-const shadows = {
-  xs: "0 1px 2px 0 rgba(0, 0, 0, 0.05)",
-  sm: "0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06)",
-  md: "0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)",
-  lg: "0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)",
-  xl: "0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)",
-  "2xl": "0 25px 50px -12px rgba(0, 0, 0, 0.25)",
-  inner: "inset 0 2px 4px 0 rgba(0, 0, 0, 0.06)",
-  none: "none",
-};
-
-// Borders
-const borders = {
-  radius: {
-    none: "0",
-    sm: "0.125rem",
-    md: "0.25rem",
-    lg: "0.375rem",
-    xl: "0.5rem",
-    "2xl": "0.75rem",
-    "3xl": "1rem",
-    full: "9999px",
+// Color palette
+const colors = {
+  primary: {
+    main: '#3f51b5',
+    light: '#757de8',
+    dark: '#002984',
+    contrastText: '#ffffff',
   },
-  width: {
-    0: "0px",
-    1: "1px",
-    2: "2px",
-    4: "4px",
-    8: "8px",
+  secondary: {
+    main: '#f50057',
+    light: '#ff4081',
+    dark: '#c51162',
+    contrastText: '#ffffff',
   },
+  success: {
+    main: '#4caf50',
+    light: '#80e27e',
+    dark: '#087f23',
+    contrastText: '#ffffff',
+  },
+  warning: {
+    main: '#ff9800',
+    light: '#ffc947',
+    dark: '#c66900',
+    contrastText: 'rgba(0, 0, 0, 0.87)',
+  },
+  error: {
+    main: '#f44336',
+    light: '#ff7961',
+    dark: '#ba000d',
+    contrastText: '#ffffff',
+  },
+  info: {
+    main: '#2196f3',
+    light: '#64b5f6',
+    dark: '#0069c0',
+    contrastText: '#ffffff',
+  },
+  text: {
+    primary: 'rgba(0, 0, 0, 0.87)',
+    secondary: 'rgba(0, 0, 0, 0.6)',
+    disabled: 'rgba(0, 0, 0, 0.38)',
+  },
+  background: {
+    default: '#f5f5f5',
+    paper: '#ffffff',
+  },
+  divider: 'rgba(0, 0, 0, 0.12)',
 };
 
-// Z-index values
-const zIndices = {
-  0: "0",
-  10: "10",
-  20: "20",
-  30: "30",
-  40: "40",
-  50: "50",
-  auto: "auto",
-  dropdown: "1000",
-  sticky: "1020",
-  fixed: "1030",
-  modalBackdrop: "1040",
-  modal: "1050",
-  popover: "1060",
-  tooltip: "1070",
+// Dark mode colors
+const darkColors = {
+  primary: {
+    main: '#757de8',
+    light: '#a4a9fc',
+    dark: '#3f51b5',
+    contrastText: '#000000',
+  },
+  secondary: {
+    main: '#ff4081',
+    light: '#ff79b0',
+    dark: '#c60055',
+    contrastText: '#000000',
+  },
+  success: {
+    main: '#80e27e',
+    light: '#b2fab4',
+    dark: '#4caf50',
+    contrastText: '#000000',
+  },
+  warning: {
+    main: '#ffc947',
+    light: '#fff350',
+    dark: '#ff9800',
+    contrastText: '#000000',
+  },
+  error: {
+    main: '#ff7961',
+    light: '#ffab91',
+    dark: '#f44336',
+    contrastText: '#000000',
+  },
+  info: {
+    main: '#64b5f6',
+    light: '#9be7ff',
+    dark: '#2196f3',
+    contrastText: '#000000',
+  },
+  text: {
+    primary: '#ffffff',
+    secondary: 'rgba(255, 255, 255, 0.7)',
+    disabled: 'rgba(255, 255, 255, 0.5)',
+  },
+  background: {
+    default: '#121212',
+    paper: '#1e1e1e',
+  },
+  divider: 'rgba(255, 255, 255, 0.12)',
 };
 
-// Transitions
-const transitions = {
-  duration: {
-    75: "75ms",
-    100: "100ms",
-    150: "150ms",
-    200: "200ms",
-    300: "300ms",
-    500: "500ms",
-    700: "700ms",
-    1000: "1000ms",
+// Typography settings
+const typography = {
+  fontFamily: [
+    'Inter',
+    '-apple-system',
+    'BlinkMacSystemFont',
+    '"Segoe UI"',
+    'Roboto',
+    '"Helvetica Neue"',
+    'Arial',
+    'sans-serif',
+    '"Apple Color Emoji"',
+    '"Segoe UI Emoji"',
+    '"Segoe UI Symbol"',
+  ].join(','),
+  h1: {
+    fontWeight: 700,
+    fontSize: '2.5rem',
   },
-  easing: {
-    linear: "linear",
-    in: "cubic-bezier(0.4, 0, 1, 1)",
-    out: "cubic-bezier(0, 0, 0.2, 1)",
-    inOut: "cubic-bezier(0.4, 0, 0.2, 1)",
+  h2: {
+    fontWeight: 600,
+    fontSize: '2rem',
   },
-};
-
-// Component-specific theme values
-const components = {
+  h3: {
+    fontWeight: 600,
+    fontSize: '1.75rem',
+  },
+  h4: {
+    fontWeight: 500,
+    fontSize: '1.5rem',
+  },
+  h5: {
+    fontWeight: 500,
+    fontSize: '1.25rem',
+  },
+  h6: {
+    fontWeight: 500,
+    fontSize: '1rem',
+  },
+  subtitle1: {
+    fontSize: '1rem',
+    fontWeight: 400,
+  },
+  subtitle2: {
+    fontSize: '0.875rem',
+    fontWeight: 500,
+  },
+  body1: {
+    fontSize: '1rem',
+    fontWeight: 400,
+  },
+  body2: {
+    fontSize: '0.875rem',
+    fontWeight: 400,
+  },
   button: {
-    sizes: {
-      xs: {
-        height: "1.5rem",
-        fontSize: fonts.sizes.xs,
-        padding: `0 ${spacing[2.5]}`,
-        borderRadius: borders.radius.md,
-      },
-      sm: {
-        height: "2rem",
-        fontSize: fonts.sizes.sm,
-        padding: `0 ${spacing[3]}`,
-        borderRadius: borders.radius.md,
-      },
-      md: {
-        height: "2.5rem",
-        fontSize: fonts.sizes.base,
-        padding: `0 ${spacing[4]}`,
-        borderRadius: borders.radius.md,
-      },
-      lg: {
-        height: "3rem",
-        fontSize: fonts.sizes.lg,
-        padding: `0 ${spacing[6]}`,
-        borderRadius: borders.radius.lg,
-      },
-      xl: {
-        height: "3.5rem",
-        fontSize: fonts.sizes.xl,
-        padding: `0 ${spacing[8]}`,
-        borderRadius: borders.radius.xl,
-      },
-    },
+    fontSize: '0.875rem',
+    fontWeight: 500,
+    textTransform: 'none',
   },
-  input: {
-    sizes: {
-      sm: {
-        height: "2rem",
-        fontSize: fonts.sizes.sm,
-        padding: `0 ${spacing[3]}`,
-        borderRadius: borders.radius.md,
-      },
-      md: {
-        height: "2.5rem",
-        fontSize: fonts.sizes.base,
-        padding: `0 ${spacing[4]}`,
-        borderRadius: borders.radius.md,
-      },
-      lg: {
-        height: "3rem",
-        fontSize: fonts.sizes.lg,
-        padding: `0 ${spacing[5]}`,
-        borderRadius: borders.radius.md,
-      },
-    },
+  caption: {
+    fontSize: '0.75rem',
+    fontWeight: 400,
+  },
+  overline: {
+    fontSize: '0.75rem',
+    fontWeight: 400,
+    textTransform: 'uppercase',
   },
 };
 
-// Main theme object
-const theme = {
-  colors,
-  fonts,
-  spacing,
-  breakpoints,
-  shadows,
-  borders,
-  zIndices,
-  transitions,
-  components,
+// Components overrides
+const components = {
+  MuiButton: {
+    styleOverrides: {
+      root: {
+        borderRadius: 8,
+        padding: '8px 16px',
+      },
+      containedPrimary: {
+        boxShadow: '0 4px 6px rgba(63, 81, 181, 0.25)',
+        '&:hover': {
+          boxShadow: '0 6px 10px rgba(63, 81, 181, 0.35)',
+        },
+      },
+      containedSecondary: {
+        boxShadow: '0 4px 6px rgba(245, 0, 87, 0.25)',
+        '&:hover': {
+          boxShadow: '0 6px 10px rgba(245, 0, 87, 0.35)',
+        },
+      },
+    },
+  },
+  MuiCard: {
+    styleOverrides: {
+      root: {
+        borderRadius: 12,
+        boxShadow: '0 2px 12px rgba(0, 0, 0, 0.08)',
+      },
+    },
+  },
+  MuiCardHeader: {
+    styleOverrides: {
+      root: {
+        padding: '16px 24px',
+      },
+    },
+  },
+  MuiCardContent: {
+    styleOverrides: {
+      root: {
+        padding: '24px',
+        '&:last-child': {
+          paddingBottom: '24px',
+        },
+      },
+    },
+  },
+  MuiPaper: {
+    styleOverrides: {
+      rounded: {
+        borderRadius: 12,
+      },
+      elevation1: {
+        boxShadow: '0 2px 12px rgba(0, 0, 0, 0.08)',
+      },
+    },
+  },
+  MuiTableCell: {
+    styleOverrides: {
+      head: {
+        fontWeight: 600,
+      },
+    },
+  },
 };
 
-// Helper functions
-export const getColor = (path) => {
-  if (!path) return undefined;
-
-  const parts = path.split(".");
-  let result = theme.colors;
-
-  for (const part of parts) {
-    if (!result[part]) return undefined;
-    result = result[part];
-  }
-
-  return result;
+// Dark mode components overrides
+const darkComponents = {
+  ...components,
+  MuiCard: {
+    styleOverrides: {
+      root: {
+        borderRadius: 12,
+        boxShadow: '0 2px 12px rgba(0, 0, 0, 0.2)',
+        backgroundColor: '#1e1e1e', 
+      },
+    },
+  },
+  MuiPaper: {
+    styleOverrides: {
+      rounded: {
+        borderRadius: 12,
+      },
+      elevation1: {
+        boxShadow: '0 2px 12px rgba(0, 0, 0, 0.2)',
+      },
+    },
+  },
 };
 
-export const getSpacing = (value) => {
-  return theme.spacing[value] || value;
-};
+// Create light theme
+const lightTheme = responsiveFontSizes(
+  createTheme({
+    palette: {
+      mode: 'light',
+      ...colors,
+    },
+    typography,
+    components,
+    shape: {
+      borderRadius: 8,
+    },
+    shadows: [
+      'none',
+      '0px 2px 1px -1px rgba(0,0,0,0.1),0px 1px 1px 0px rgba(0,0,0,0.07),0px 1px 3px 0px rgba(0,0,0,0.06)',
+      '0px 3px 1px -2px rgba(0,0,0,0.1),0px 2px 2px 0px rgba(0,0,0,0.07),0px 1px 5px 0px rgba(0,0,0,0.06)',
+      '0px 3px 3px -2px rgba(0,0,0,0.1),0px 3px 4px 0px rgba(0,0,0,0.07),0px 1px 8px 0px rgba(0,0,0,0.06)',
+      '0px 2px 4px -1px rgba(0,0,0,0.1),0px 4px 5px 0px rgba(0,0,0,0.07),0px 1px 10px 0px rgba(0,0,0,0.06)',
+      '0px 3px 5px -1px rgba(0,0,0,0.1),0px 5px 8px 0px rgba(0,0,0,0.07),0px 1px 14px 0px rgba(0,0,0,0.06)',
+      '0px 3px 5px -1px rgba(0,0,0,0.1),0px 6px 10px 0px rgba(0,0,0,0.07),0px 1px 18px 0px rgba(0,0,0,0.06)',
+      '0px 4px 5px -2px rgba(0,0,0,0.1),0px 7px 10px 1px rgba(0,0,0,0.07),0px 2px 16px 1px rgba(0,0,0,0.06)',
+      '0px 5px 5px -3px rgba(0,0,0,0.1),0px 8px 10px 1px rgba(0,0,0,0.07),0px 3px 14px 2px rgba(0,0,0,0.06)',
+      '0px 5px 6px -3px rgba(0,0,0,0.1),0px 9px 12px 1px rgba(0,0,0,0.07),0px 3px 16px 2px rgba(0,0,0,0.06)',
+      '0px 6px 6px -3px rgba(0,0,0,0.1),0px 10px 14px 1px rgba(0,0,0,0.07),0px 4px 18px 3px rgba(0,0,0,0.06)',
+      '0px 6px 7px -4px rgba(0,0,0,0.1),0px 11px 15px 1px rgba(0,0,0,0.07),0px 4px 20px 3px rgba(0,0,0,0.06)',
+      '0px 7px 8px -4px rgba(0,0,0,0.1),0px 12px 17px 2px rgba(0,0,0,0.07),0px 5px 22px 4px rgba(0,0,0,0.06)',
+      '0px 7px 8px -4px rgba(0,0,0,0.1),0px 13px 19px 2px rgba(0,0,0,0.07),0px 5px 24px 4px rgba(0,0,0,0.06)',
+      '0px 7px 9px -4px rgba(0,0,0,0.1),0px 14px 21px 2px rgba(0,0,0,0.07),0px 5px 26px 4px rgba(0,0,0,0.06)',
+      '0px 8px 9px -5px rgba(0,0,0,0.1),0px 15px 22px 2px rgba(0,0,0,0.07),0px 6px 28px 5px rgba(0,0,0,0.06)',
+      '0px 8px 10px -5px rgba(0,0,0,0.1),0px 16px 24px 2px rgba(0,0,0,0.07),0px 6px 30px 5px rgba(0,0,0,0.06)',
+      '0px 8px 11px -5px rgba(0,0,0,0.1),0px 17px 26px 2px rgba(0,0,0,0.07),0px 6px 32px 5px rgba(0,0,0,0.06)',
+      '0px 9px 11px -5px rgba(0,0,0,0.1),0px 18px 28px 2px rgba(0,0,0,0.07),0px 7px 34px 6px rgba(0,0,0,0.06)',
+      '0px 9px 12px -6px rgba(0,0,0,0.1),0px 19px 29px 2px rgba(0,0,0,0.07),0px 7px 36px 6px rgba(0,0,0,0.06)',
+      '0px 10px 13px -6px rgba(0,0,0,0.1),0px 20px 31px 3px rgba(0,0,0,0.07),0px 8px 38px 7px rgba(0,0,0,0.06)',
+      '0px 10px 13px -6px rgba(0,0,0,0.1),0px 21px 33px 3px rgba(0,0,0,0.07),0px 8px 40px 7px rgba(0,0,0,0.06)',
+      '0px 10px 14px -6px rgba(0,0,0,0.1),0px 22px 35px 3px rgba(0,0,0,0.07),0px 8px 42px 7px rgba(0,0,0,0.06)',
+      '0px 11px 14px -7px rgba(0,0,0,0.1),0px 23px 36px 3px rgba(0,0,0,0.07),0px 9px 44px 8px rgba(0,0,0,0.06)',
+      '0px 11px 15px -7px rgba(0,0,0,0.1),0px 24px 38px 3px rgba(0,0,0,0.07),0px 9px 46px 8px rgba(0,0,0,0.06)',
+    ],
+  })
+);
 
-export const getFontSize = (size) => {
-  return theme.fonts.sizes[size] || size;
-};
+// Create dark theme
+const darkTheme = responsiveFontSizes(
+  createTheme({
+    palette: {
+      mode: 'dark',
+      ...darkColors,
+    },
+    typography,
+    components: darkComponents,
+    shape: {
+      borderRadius: 8,
+    },
+  })
+);
 
-export const getTypographyStyle = (variant) => {
-  return theme.fonts.variants[variant] || {};
-};
-
-export default theme;
+export { lightTheme, darkTheme };

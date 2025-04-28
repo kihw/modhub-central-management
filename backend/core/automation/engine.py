@@ -5,9 +5,9 @@ import json
 import os
 from datetime import datetime
 
-from .conditions import ConditionEvaluator
-from .actions import ActionExecutor
-from ..device_control import DeviceController
+from core.automation.conditions import ConditionEvaluator
+from core.automation.actions import ActionExecutor
+from device_control import DeviceController
 from ...db import crud, models
 
 logger = logging.getLogger(__name__)

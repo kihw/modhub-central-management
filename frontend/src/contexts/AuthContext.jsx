@@ -1,87 +1,136 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useState, useEffect, useContext } from 'react';
+import { jwtDecode } from 'jwt-decode';
 
-// Création du contexte d'authentification
 const AuthContext = createContext(null);
 
-// Hook personnalisé pour utiliser le contexte d'authentification
-export const useAuth = () => {
-  const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
-  return context;
-};
-
 export const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(null);
+  const [currentUser, setCurrentUser] = useState(null);
   const [loading, setLoading] = useState(true);
-
+  const [error, setError] = useState(null);
+  
+  // Initialiser l'état d'authentification au chargement
   useEffect(() => {
-    // Vérifier si l'utilisateur est déjà connecté au chargement
-    const storedUser = localStorage.getItem('user');
-    if (storedUser) {
-      setUser(JSON.parse(storedUser));
+    const token = localStorage.getItem('token');
+    if (token) {
+      try {
+        const decoded = jwtDecode(token);
+        const currentTime = Date.now() / 1000;
+        
+        if (decoded.exp && decoded.exp > currentTime) {
+          setCurrentUser(decoded);
+        } else {
+          // Token expiré
+          localStorage.removeItem('token');
+          setCurrentUser(null);
+        }
+      } catch (err) {
+        console.error('Token invalide:', err);
+        localStorage.removeItem('token');
+        setError('Session invalide, veuillez vous reconnecter.');
+      }
     }
     setLoading(false);
   }, []);
 
   // Fonction de connexion
-  const login = async (credentials) => {
+  const login = async (username, password) => {
+    setLoading(true);
+    setError(null);
     try {
-      // Cette partie serait normalement remplacée par une véritable requête API
-      // Exemple fictif
-      const response = await mockLoginAPI(credentials);
+      // Exemple d'appel API - à remplacer par votre endpoint réel
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password }),
+      });
       
-      // Stocker l'utilisateur dans localStorage et state
-      localStorage.setItem('user', JSON.stringify(response.user));
-      setUser(response.user);
-      return response.user;
-    } catch (error) {
-      console.error("Login failed:", error);
-      throw error;
+      if (!response.ok) {
+        throw new Error('Échec de la connexion');
+      }
+      
+      const data = await response.json();
+      localStorage.setItem('token', data.token);
+      
+      const decoded = jwtDecode(data.token);
+      setCurrentUser(decoded);
+      return true;
+    } catch (err) {
+      setError(err.message || 'Échec de la connexion. Vérifiez vos identifiants.');
+      return false;
+    } finally {
+      setLoading(false);
     }
   };
 
   // Fonction de déconnexion
   const logout = () => {
-    localStorage.removeItem('user');
-    setUser(null);
+    localStorage.removeItem('token');
+    setCurrentUser(null);
   };
 
-  // Mock d'API pour la démonstration
-  // À remplacer par une vraie requête à votre API
-  const mockLoginAPI = async (credentials) => {
-    return new Promise((resolve, reject) => {
-      // Simuler une requête API
-      setTimeout(() => {
-        if (credentials.email && credentials.password) {
-          resolve({
-            user: {
-              id: '1',
-              name: 'John Doe',
-              email: credentials.email,
-            },
-            token: 'fake-jwt-token'
-          });
-        } else {
-          reject(new Error('Invalid credentials'));
-        }
-      }, 500);
-    });
+  // Fonction d'inscription
+  const register = async (userData) => {
+    setLoading(true);
+    setError(null);
+    try {
+      // Exemple d'appel API - à remplacer par votre endpoint réel
+      const response = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(userData),
+      });
+      
+      if (!response.ok) {
+        const errData = await response.json();
+        throw new Error(errData.message || 'Échec de l\'inscription');
+      }
+      
+      return true;
+    } catch (err) {
+      setError(err.message || 'Échec de l\'inscription. Veuillez réessayer.');
+      return false;
+    } finally {
+      setLoading(false);
+    }
   };
 
-  // Valeur fournie par le contexte
+  // Vérification si l'utilisateur est authentifié
+  const isAuthenticated = () => {
+    return !!currentUser;
+  };
+
+  // Récupération du token pour les requêtes API
+  const getAuthToken = () => {
+    return localStorage.getItem('token');
+  };
+
+  // Vérification des permissions de l'utilisateur
+  const hasPermission = (permission) => {
+    if (!currentUser || !currentUser.permissions) return false;
+    return currentUser.permissions.includes(permission);
+  };
+
   const value = {
-    user,
+    currentUser,
     loading,
+    error,
     login,
     logout,
-    isAuthenticated: !!user
+    register,
+    isAuthenticated,
+    getAuthToken,
+    hasPermission,
   };
 
-  return (
-    <AuthContext.Provider value={value}>
-      {!loading && children}
-    </AuthContext.Provider>
-  );
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
+
+export const useAuth = () => {
+  const context = useContext(AuthContext);
+  if (!context) {
+    throw new Error('useAuth doit être utilisé à l\'intérieur d\'un AuthProvider');
+  }
+  return context;
+};
+
+export default AuthContext;

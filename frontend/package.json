@@ -1,8 +1,8 @@
 {
-  "name": "seo-analyzer-frontend",
-  "version": "1.0.0",
-  "description": "SEO Analyzer Desktop Application - Frontend",
-  "author": "SEO Analyzer Team",
+  "name": "modhub-central",
+  "version": "0.1.0",
+  "description": "ModHub Central - Hub Centralis\u00e9 de Gestion de Mods PC",
+  "author": "ModHub Central Team",
   "license": "MIT",
   "private": true,
   "main": "electron/main.js",

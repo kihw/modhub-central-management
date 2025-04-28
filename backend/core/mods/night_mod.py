@@ -2,7 +2,7 @@ from datetime import datetime, time
 from typing import Optional, Dict, Any
 import logging
 
-from ..device_control import DeviceController
+from device_control import DeviceController
 from ...db.models import Settings, Room
 
 logger = logging.getLogger(__name__)

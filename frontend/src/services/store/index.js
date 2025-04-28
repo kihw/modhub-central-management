@@ -5,11 +5,11 @@ import storage from 'redux-persist/lib/storage';
 import thunk from 'redux-thunk';
 
 // Import reducers
-import authReducer from './slices/authSlice';
-import projectReducer from './slices/projectSlice';
-import uiReducer from './slices/uiSlice';
-import settingsReducer from './slices/settingsSlice';
-import notificationReducer from './slices/notificationSlice';
+import authReducer from '@/slices/authSlice.js';
+import projectReducer from '@/slices/projectSlice.js';
+import uiReducer from '@/slices/uiSlice.js';
+import settingsReducer from '@/redux/slices/settingsSlice.js';
+import notificationReducer from '@/slices/notificationSlice.js';
 
 // Configure persist options
 const persistConfig = {

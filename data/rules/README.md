@@ -1,1 +1,0 @@
-# Organisation des règles d'automatisation
