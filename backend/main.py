@@ -1,9 +1,9 @@
 import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.routers import mods, process_monitor, settings, rules
-from app.core.monitor import ProcessMonitor
-from app.core.config import settings as app_settings
+from api import mods, automation as process_monitor, settings, system as rules
+from core.process_monitor import ProcessMonitor
+from core.config import settings as app_settings
 
 app = FastAPI(
     title="ModHub Central API",
@@ -14,7 +14,7 @@ app = FastAPI(
 # CORS configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "electron://localhost"],
+    allow_origins=["http://localhost:8000", "electron://localhost"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

@@ -16,7 +16,7 @@ PROJECT_NAME = "DeviceControlHub"
 CORS_ORIGINS = [
     "http://localhost:3000",
     "http://localhost:8668",
-    "http://localhost:5173",
+    "http://localhost:8000",
     "electron://localhost"
 ]
 
