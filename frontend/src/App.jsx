@@ -31,18 +31,14 @@ import ConnectionError from "./components/ConnectionError";
 import { useBackend } from "./context/BackendContext";
 
 // App content with connection check
+
 const AppContent = () => {
   const { isConnected, isChecking, error, reconnect } = useBackend();
 
   if (isChecking) {
     return (
       <div className="flex h-screen w-screen items-center justify-center bg-gray-900">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500 mx-auto"></div>
-          <p className="mt-4 text-white text-lg">
-            Initializing ModHub Central...
-          </p>
-        </div>
+        {/* loading spinner */}
       </div>
     );
   }
@@ -50,56 +46,27 @@ const AppContent = () => {
   if (!isConnected) {
     return (
       <div className="flex h-screen w-screen items-center justify-center bg-gray-900">
-        <div className="text-center p-8 max-w-md bg-gray-800 rounded-lg shadow-lg">
-          <div className="text-red-500 text-5xl mb-4">⚠️</div>
-          <h1 className="text-xl font-bold text-white mb-4">
-            Backend Connection Error
-          </h1>
-          <p className="text-gray-300 mb-6">
-            {error ||
-              "Unable to connect to the ModHub Central backend service. Please ensure the service is running."}
-          </p>
-          <button
-            onClick={reconnect}
-            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
-          >
-            Retry Connection
-          </button>
-        </div>
+        {/* backend not connected screen */}
       </div>
     );
   }
 
   return (
-    <Router>
-      <MainLayout>
-        <Sidebar />
-        <div className="content-container flex-1 overflow-auto">
-          <Routes>
-            <Route path="/" element={<Navigate to="/dashboard" replace />} />
-            <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/mods" element={<ModsManager />} />
-            <Route path="/mods/:modId" element={<ModDetail />} />
-            <Route path="/rules" element={<RulesEditor />} />
-            <Route path="/activity" element={<ActivityMonitor />} />
-            <Route path="/settings" element={<Settings />} />
-            <Route path="*" element={<Navigate to="/dashboard" replace />} />
-          </Routes>
-        </div>
-      </MainLayout>
-      <ToastContainer
-        position="bottom-right"
-        autoClose={5000}
-        hideProgressBar={false}
-        newestOnTop
-        closeOnClick
-        rtl={false}
-        pauseOnFocusLoss
-        draggable
-        pauseOnHover
-        theme="dark"
-      />
-    </Router>
+    <MainLayout>
+      <Sidebar />
+      <div className="content-container flex-1 overflow-auto">
+        <Routes>
+          <Route path="/" element={<Navigate to="/dashboard" replace />} />
+          <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/mods" element={<ModsManager />} />
+          <Route path="/mods/:modId" element={<ModDetail />} />
+          <Route path="/rules" element={<RulesEditor />} />
+          <Route path="/activity" element={<ActivityMonitor />} />
+          <Route path="/settings" element={<Settings />} />
+          <Route path="*" element={<Navigate to="/dashboard" replace />} />
+        </Routes>
+      </div>
+    </MainLayout>
   );
 };
 
