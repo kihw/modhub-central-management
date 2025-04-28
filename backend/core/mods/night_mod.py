@@ -56,94 +56,6 @@ class NightMod:
         else:
             return start_time <= current_time <= end_time
     
-<<<<<<< HEAD
-    def activate(self) -> bool:
-        """Activate night mode for affected rooms"""
-        if self.active:
-            logger.info("Night mod already active")
-            return True
-            
-        try:
-            # Get rooms to affect
-            affected_rooms = self.settings.get("affect_rooms", [])
-            excluded_rooms = self.settings.get("exclude_rooms", [])
-            
-            brightness = self.settings.get("brightness_level", 30)
-            color_temp = self.settings.get("color_temp", 2700)
-            
-            # Apply night settings to each affected room
-            for room_name in affected_rooms:
-                if room_name in excluded_rooms:
-                    continue
-                    
-                # Get lights in room
-                devices = self.device_controller.get_devices_by_room(room_name)
-                
-                for device in devices:
-                    if device.type == "light":
-                        self.device_controller.set_device_state(
-                            device_id=device.id,
-                            state=True,  # On
-                            brightness=brightness,
-                            color_temp=color_temp
-                        )
-            
-            self.active = True
-            logger.info("Night mod activated")
-            return True
-            
-        except Exception as e:
-            logger.error(f"Error activating night mod: {e}")
-            return False
-    
-    def deactivate(self) -> bool:
-        """Deactivate night mode and restore normal lighting"""
-        if not self.active:
-            logger.info("Night mod already inactive")
-            return True
-            
-        try:
-            # Get rooms affected
-            affected_rooms = self.settings.get("affect_rooms", [])
-            
-            # Reset light settings in each affected room
-            for room_name in affected_rooms:
-                devices = self.device_controller.get_devices_by_room(room_name)
-                
-                for device in devices:
-                    if device.type == "light":
-                        # Reset to default daytime settings
-                        self.device_controller.set_device_state(
-                            device_id=device.id,
-                            state=True,  # On
-                            brightness=100,  # Full brightness
-                            color_temp=4000  # Neutral white
-                        )
-            
-            self.active = False
-            logger.info("Night mod deactivated")
-            return True
-            
-        except Exception as e:
-            logger.error(f"Error deactivating night mod: {e}")
-            return False
-    
-    def update_settings(self, new_settings: Dict[str, Any]) -> bool:
-        """Update night mod settings"""
-        try:
-            self.settings.update(new_settings)
-            # TODO: Save to database
-            
-            # If settings changed and it's nighttime, reapply settings
-            if self.active or self.is_night_time():
-                self.deactivate()
-                self.activate()
-                
-            logger.info("Night mod settings updated")
-            return True
-        except Exception as e:
-            logger.error(f"Error updating night mod settings: {e}")
-=======
     def _apply_night_settings(self, reason: str) -> bool:
         """
         Applique les paramètres du mode nuit.
@@ -219,5 +131,4 @@ class NightMod:
             return True
         except Exception as e:
             self.logger.error(f"Format d'heure invalide: {e}")
->>>>>>> bdb84f715fb0be664761e28acc7f0b8661da8a4a
             return False
