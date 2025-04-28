@@ -1,13 +1,14 @@
-from backend.db import schemas
+# backend/api/mods.py - Corrigé
 from fastapi import APIRouter, HTTPException, Depends, status
 from sqlalchemy.orm import Session
 from typing import List, Optional
 
+# Correction des imports
 from db.database import get_db
-from db.models import Mod as ModModel
-from db.schemas import ModCreate, ModUpdate, ModResponse
+from db import models  # Correction: remove the space
+from db import schemas  # Correction: remove the space
 from db.crud import get_mods, get_mod, create_mod, update_mod, delete_mod, toggle_mod
-from core.mods.mod_manager import ModManager
+from core.mods.mod_manager import ModManager  # Maintenant ce sera trouvé
 
 router = APIRouter(
     prefix="/mods",
