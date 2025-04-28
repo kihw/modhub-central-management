@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, validator
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 from enum import Enum
@@ -9,24 +9,53 @@ class ModType(str, Enum):
     MEDIA = "media"
     CUSTOM = "custom"
 
+class Priority(int, Enum):
+    LOW = 1
+    MEDIUM = 5
+    HIGH = 10
+
 class ModBase(BaseModel):
-    name: str
+    name: str = Field(
+        ..., 
+        min_length=3, 
+        max_length=50, 
+        description="Name of the mod"
+    )
     type: ModType
-    description: Optional[str] = None
+    description: Optional[str] = Field(
+        None, 
+        max_length=200
+    )
     config: Dict[str, Any] = {}
 
+    @validator('name')
+    def name_must_be_valid(cls, v):
+        # Ensure name doesn't contain special characters
+        import re
+        if not re.match(r'^[a-zA-Z0-9_\s-]+$', v):
+            raise ValueError('Mod name can only contain letters, numbers, spaces, underscores, and hyphens')
+        return v
+
 class ModCreate(ModBase):
-    pass
+    priority: Priority = Priority.MEDIUM
 
 class ModUpdate(BaseModel):
-    name: Optional[str] = None
-    description: Optional[str] = None
+    name: Optional[str] = Field(
+        None, 
+        min_length=3, 
+        max_length=50
+    )
+    description: Optional[str] = Field(
+        None, 
+        max_length=200
+    )
     config: Optional[Dict[str, Any]] = None
     is_active: Optional[bool] = None
+    priority: Optional[Priority] = None
 
 class ModResponse(ModBase):
     id: int
-    is_active: bool
+    is_active: bool = False
     created_at: datetime
     updated_at: Optional[datetime] = None
 
@@ -34,13 +63,43 @@ class ModResponse(ModBase):
         orm_mode = True
 
 class ConditionBase(BaseModel):
-    condition_type: str
-    parameters: Dict[str, Any] = {}
-    logic_operator: str = "AND"
+    condition_type: str = Field(
+        ..., 
+        description="Type of condition (e.g., process, time, system state)"
+    )
+    parameters: Dict[str, Any] = Field(
+        default_factory=dict, 
+        description="Parameters for the condition"
+    )
+    logic_operator: str = Field(
+        default="AND", 
+        pattern="^(AND|OR)$", 
+        description="Logical operator for combining conditions"
+    )
+
+    @validator('condition_type')
+    def validate_condition_type(cls, v):
+        valid_types = ['process', 'time', 'system_state', 'custom']
+        if v.lower() not in valid_types:
+            raise ValueError(f'Invalid condition type. Must be one of {valid_types}')
+        return v
 
 class ActionBase(BaseModel):
-    action_type: str
-    parameters: Dict[str, Any] = {}
+    action_type: str = Field(
+        ..., 
+        description="Type of action to perform"
+    )
+    parameters: Dict[str, Any] = Field(
+        default_factory=dict, 
+        description="Parameters for the action"
+    )
+
+    @validator('action_type')
+    def validate_action_type(cls, v):
+        valid_types = ['mod_activation', 'system_command', 'notification', 'custom']
+        if v.lower() not in valid_types:
+            raise ValueError(f'Invalid action type. Must be one of {valid_types}')
+        return v
 
 class RuleBase(BaseModel):
     name: str

@@ -1,182 +1,216 @@
-# backend/core/mods/mod_manager.py
 import logging
 from typing import Dict, Any, Optional, List
-from .mod_base import ModBase
-from .gaming_mod import GamingMod
-from .media_mod import MediaMod
-from .night_mod import NightMod
+from enum import Enum, auto
+import threading
+import time
+
+class ModPriority(Enum):
+    CRITICAL = 100
+    HIGH = 75
+    MEDIUM = 50
+    LOW = 25
+    BACKGROUND = 10
+
+class ModConflictResolutionStrategy(Enum):
+    PRIORITY = auto()  # Highest priority mod wins
+    LAST_ACTIVATED = auto()  # Most recently activated mod wins
+    CUMULATIVE = auto()  # Combine mod effects if possible
+    ASK_USER = auto()  # Require user intervention
 
 class ModManager:
     """
-    Gestionnaire central pour tous les mods.
-    Permet d'activer/désactiver les mods et de gérer leurs interactions.
+    Advanced Mod Management System with Conflict Resolution
     """
-    
     def __init__(self):
-        self.mods = {}
+        self._mods: Dict[str, Any] = {}
+        self._active_mods: List[str] = []
+        self._mod_lock = threading.Lock()
+        self._conflict_strategy = ModConflictResolutionStrategy.PRIORITY
         self.logger = logging.getLogger(__name__)
-        self._init_mods()
-    
-    def _init_mods(self):
-        """Initialise les mods intégrés"""
-        # Créer les instances des mods de base
-        self.mods['gaming'] = GamingMod()
-        self.mods['night'] = NightMod()
-        self.mods['media'] = MediaMod()
-        
-        self.logger.info(f"ModManager initialisé avec {len(self.mods)} mods")
-    
-    def register_mod(self, mod_id: str, mod_instance: ModBase) -> bool:
+
+    def register_mod(self, mod_id: str, mod_instance: Any, priority: ModPriority = ModPriority.MEDIUM):
         """
-        Enregistre un nouveau mod personnalisé
+        Register a new mod with priority and potential conflict handling
         
         Args:
-            mod_id: Identifiant unique du mod
-            mod_instance: Instance d'une classe dérivée de ModBase
-            
-        Returns:
-            bool: True si l'enregistrement a réussi
+            mod_id (str): Unique identifier for the mod
+            mod_instance (Any): Mod implementation
+            priority (ModPriority): Mod's operational priority
         """
-        if mod_id in self.mods:
-            self.logger.warning(f"Le mod {mod_id} existe déjà et sera remplacé")
+        with self._mod_lock:
+            # Check for existing mod
+            if mod_id in self._mods:
+                self.logger.warning(f"Mod {mod_id} already exists. Replacing.")
             
-        if not isinstance(mod_instance, ModBase):
-            self.logger.error(f"L'instance de mod doit hériter de ModBase")
-            return False
+            # Validate mod has required methods
+            required_methods = ['activate', 'deactivate']
+            for method in required_methods:
+                if not hasattr(mod_instance, method):
+                    raise ValueError(f"Mod {mod_id} must implement {method} method")
             
-        self.mods[mod_id] = mod_instance
-        self.logger.info(f"Mod {mod_id} enregistré avec succès")
-        return True
-    
-    def unregister_mod(self, mod_id: str) -> bool:
+            self._mods[mod_id] = {
+                'instance': mod_instance,
+                'priority': priority,
+                'last_activated': None
+            }
+
+    def activate_mod(self, mod_id: str, context: Optional[Dict[str, Any]] = None) -> bool:
         """
-        Supprime un mod du gestionnaire
+        Activate a mod with advanced conflict resolution
         
         Args:
-            mod_id: Identifiant du mod à supprimer
-            
+            mod_id (str): Mod to activate
+            context (dict, optional): Context for mod activation
+        
         Returns:
-            bool: True si la suppression a réussi
+            bool: Whether mod activation was successful
         """
-        if mod_id not in self.mods:
-            self.logger.warning(f"Le mod {mod_id} n'existe pas")
-            return False
+        with self._mod_lock:
+            # Validate mod exists
+            if mod_id not in self._mods:
+                self.logger.error(f"Mod {mod_id} not registered")
+                return False
+
+            # Check for conflicts with active mods
+            conflicting_mods = self._check_mod_conflicts(mod_id)
             
-        # Désactiver le mod s'il est actif
-        if self.mods[mod_id].is_active:
-            self.deactivate_mod(mod_id)
+            if conflicting_mods:
+                # Resolve conflicts based on strategy
+                resolution_result = self._resolve_mod_conflicts(mod_id, conflicting_mods)
+                
+                if not resolution_result:
+                    self.logger.warning(f"Could not resolve conflicts for mod {mod_id}")
+                    return False
+
+            # Attempt to activate the mod
+            try:
+                mod_instance = self._mods[mod_id]['instance']
+                activation_success = mod_instance.activate(context)
+                
+                if activation_success:
+                    # Update active mods and activation time
+                    if mod_id not in self._active_mods:
+                        self._active_mods.append(mod_id)
+                    self._mods[mod_id]['last_activated'] = time.time()
+                    
+                    self.logger.info(f"Mod {mod_id} activated successfully")
+                    return True
+                else:
+                    self.logger.warning(f"Mod {mod_id} activation failed")
+                    return False
             
-        del self.mods[mod_id]
-        self.logger.info(f"Mod {mod_id} supprimé avec succès")
-        return True
-    
-    def activate_mod(self, mod_id: str, config: Optional[Dict[str, Any]] = None) -> bool:
-        """
-        Active un mod avec une configuration spécifique
-        
-        Args:
-            mod_id: Identifiant du mod à activer
-            config: Configuration optionnelle à appliquer
-            
-        Returns:
-            bool: True si l'activation a réussi
-        """
-        if mod_id not in self.mods:
-            self.logger.error(f"Le mod {mod_id} n'existe pas")
-            return False
-            
-        mod = self.mods[mod_id]
-        
-        # Appliquer la configuration si fournie
-        if config:
-            mod.update_settings(config)
-            
-        # Activer le mod
-        context = self._get_system_context()
-        success = mod.activate(context)
-        
-        if success:
-            self.logger.info(f"Mod {mod_id} activé avec succès")
-        else:
-            self.logger.error(f"Échec de l'activation du mod {mod_id}")
-            
-        return success
-    
+            except Exception as e:
+                self.logger.error(f"Error activating mod {mod_id}: {e}")
+                return False
+
     def deactivate_mod(self, mod_id: str) -> bool:
         """
-        Désactive un mod
+        Deactivate a specific mod
         
         Args:
-            mod_id: Identifiant du mod à désactiver
-            
+            mod_id (str): Mod to deactivate
+        
         Returns:
-            bool: True si la désactivation a réussi
+            bool: Whether deactivation was successful
         """
-        if mod_id not in self.mods:
-            self.logger.error(f"Le mod {mod_id} n'existe pas")
-            return False
+        with self._mod_lock:
+            if mod_id not in self._mods:
+                self.logger.error(f"Mod {mod_id} not registered")
+                return False
+
+            if mod_id not in self._active_mods:
+                self.logger.warning(f"Mod {mod_id} is not active")
+                return True
+
+            try:
+                mod_instance = self._mods[mod_id]['instance']
+                deactivation_success = mod_instance.deactivate()
+                
+                if deactivation_success:
+                    self._active_mods.remove(mod_id)
+                    self.logger.info(f"Mod {mod_id} deactivated successfully")
+                    return True
+                else:
+                    self.logger.warning(f"Mod {mod_id} deactivation failed")
+                    return False
             
-        mod = self.mods[mod_id]
+            except Exception as e:
+                self.logger.error(f"Error deactivating mod {mod_id}: {e}")
+                return False
+
+    def _check_mod_conflicts(self, new_mod_id: str) -> List[str]:
+        """
+        Check for potential conflicts with active mods
         
-        if not mod.is_active:
-            self.logger.info(f"Le mod {mod_id} est déjà inactif")
+        Args:
+            new_mod_id (str): ID of mod to be activated
+        
+        Returns:
+            List of conflicting mod IDs
+        """
+        conflicting_mods = []
+        new_mod_priority = self._mods[new_mod_id]['priority']
+
+        for active_mod_id in self._active_mods:
+            active_mod_priority = self._mods[active_mod_id]['priority']
+            
+            # Simple conflict detection based on priority
+            if (new_mod_priority > active_mod_priority and 
+                self._conflict_strategy == ModConflictResolutionStrategy.PRIORITY):
+                conflicting_mods.append(active_mod_id)
+        
+        return conflicting_mods
+
+    def _resolve_mod_conflicts(self, new_mod_id: str, conflicting_mods: List[str]) -> bool:
+        """
+        Resolve conflicts between mods based on selected strategy
+        
+        Args:
+            new_mod_id (str): ID of mod to be activated
+            conflicting_mods (List[str]): List of conflicting mod IDs
+        
+        Returns:
+            bool: Whether conflict resolution was successful
+        """
+        if self._conflict_strategy == ModConflictResolutionStrategy.PRIORITY:
+            # Deactivate lower priority mods
+            for conflict_mod_id in conflicting_mods:
+                self.deactivate_mod(conflict_mod_id)
             return True
-            
-        success = mod.deactivate()
         
-        if success:
-            self.logger.info(f"Mod {mod_id} désactivé avec succès")
-        else:
-            self.logger.error(f"Échec de la désactivation du mod {mod_id}")
-            
-        return success
-    
+        elif self._conflict_strategy == ModConflictResolutionStrategy.LAST_ACTIVATED:
+            # Deactivate previously activated mods
+            for conflict_mod_id in conflicting_mods:
+                self.deactivate_mod(conflict_mod_id)
+            return True
+        
+        elif self._conflict_strategy == ModConflictResolutionStrategy.CUMULATIVE:
+            # This would require more complex mod interaction logic
+            self.logger.warning("Cumulative mod resolution not fully implemented")
+            return False
+        
+        elif self._conflict_strategy == ModConflictResolutionStrategy.ASK_USER:
+            # In a real application, this would trigger a user prompt
+            self.logger.warning("User intervention required for mod conflict")
+            return False
+        
+        return False
+
     def get_active_mods(self) -> List[str]:
         """
-        Retourne la liste des mods actifs
+        Get list of currently active mods
         
         Returns:
-            List[str]: Liste des identifiants des mods actifs
+            List of active mod IDs
         """
-        return [mod_id for mod_id, mod in self.mods.items() if mod.is_active]
-    
-    def get_mod_status(self, mod_id: str) -> Optional[Dict[str, Any]]:
+        return self._active_mods.copy()
+
+    def set_conflict_strategy(self, strategy: ModConflictResolutionStrategy):
         """
-        Retourne l'état d'un mod
+        Set the conflict resolution strategy
         
         Args:
-            mod_id: Identifiant du mod
-            
-        Returns:
-            Dict: État du mod ou None si le mod n'existe pas
+            strategy (ModConflictResolutionStrategy): Desired conflict resolution strategy
         """
-        if mod_id not in self.mods:
-            return None
-            
-        return self.mods[mod_id].get_status()
-    
-    def get_all_mods_status(self) -> Dict[str, Dict[str, Any]]:
-        """
-        Retourne l'état de tous les mods
-        
-        Returns:
-            Dict: Dictionnaire des états de tous les mods
-        """
-        return {mod_id: mod.get_status() for mod_id, mod in self.mods.items()}
-    
-    def _get_system_context(self) -> Dict[str, Any]:
-        """
-        Crée un contexte système pour les mods
-        
-        Returns:
-            Dict: Contexte avec informations système
-        """
-        # Cette fonction pourrait être étendue pour collecter plus d'informations
-        # comme les processus actifs, l'heure, l'état du système, etc.
-        return {
-            "timestamp": datetime.now().isoformat(),
-            "processes": [],  # À remplir avec la liste des processus actifs
-            "is_gaming_activity": False,
-            "is_media_activity": False,
-            "time_of_day": "day",  # 'day' ou 'night'
-        }
+        self._conflict_strategy = strategy
+        self.logger.info(f"Conflict resolution strategy set to {strategy}")

@@ -26,8 +26,8 @@ import RulesEditor from "./pages/RulesEditor";
 import Settings from "./pages/Settings";
 import ModDetail from "./pages/ModDetail";
 import ActivityMonitor from "./pages/ActivityMonitor";
-import ErrorBoundary from "./components/errorboundary/ErrorBoundary";
-import ConnectionError from "./components/connectionerror/ConnectionError";
+import ErrorBoundary from "./components/ErrorBoundary";
+import ConnectionError from "./components/ConnectionError";
 import { useBackend } from "./context/BackendContext";
 
 // App content with connection check

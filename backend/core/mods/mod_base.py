@@ -1,75 +1,174 @@
 from abc import ABC, abstractmethod
-from typing import Dict, Any, Optional, List
+from enum import Enum, auto
+from typing import Dict, Any, Optional
 import logging
+import uuid
+from dataclasses import dataclass, field
+from datetime import datetime
+
+class ModState(Enum):
+    """
+    Représente les différents états possibles d'un mod
+    """
+    INACTIVE = auto()
+    ACTIVE = auto()
+    ERROR = auto()
+    PAUSED = auto()
+    INITIALIZING = auto()
+
+@dataclass
+class ModMetadata:
+    """
+    Métadonnées complètes pour un mod
+    """
+    id: str = field(default_factory=lambda: str(uuid.uuid4()))
+    name: str = ''
+    description: Optional[str] = None
+    version: str = '0.1.0'
+    author: Optional[str] = None
+    created_at: datetime = field(default_factory=datetime.now)
+    last_activated: Optional[datetime] = None
+    total_activation_time: int = 0  # en secondes
+    activation_count: int = 0
 
 class ModBase(ABC):
-    """Classe de base abstraite pour tous les types de mods."""
-    
-    def __init__(self, name: str, description: str, priority: int = 0):
+    """
+    Classe de base abstraite définissant le comportement et les propriétés 
+    fondamentales de tous les mods.
+    """
+    def __init__(
+        self, 
+        name: str, 
+        description: Optional[str] = None,
+        priority: int = 50
+    ):
         """
-        Initialise un mod avec ses propriétés de base.
+        Initialise un mod avec ses propriétés de base
         
         Args:
-            name: Nom du mod
-            description: Description du mod
-            priority: Priorité du mod (plus la valeur est élevée, plus le mod est prioritaire)
+            name (str): Nom du mod
+            description (str, optional): Description détaillée
+            priority (int, optional): Priorité du mod (0-100)
         """
-        self.name = name
-        self.description = description
-        self.priority = priority
-        self.is_active = False
-        self.settings = {}
-        self.logger = logging.getLogger(f"mod.{name}")
-    
+        self._metadata = ModMetadata(
+            name=name, 
+            description=description
+        )
+        
+        self._state = ModState.INACTIVE
+        self._priority = max(0, min(100, priority))
+        
+        # Configuration du logging
+        self._logger = logging.getLogger(f'mod.{name}')
+        
+        # Configuration du mod
+        self._config: Dict[str, Any] = {}
+        
+        # Timestamps pour le tracking
+        self._activation_start: Optional[datetime] = None
+
+    @property
+    def metadata(self) -> ModMetadata:
+        """
+        Obtenir les métadonnées du mod
+        
+        Returns:
+            ModMetadata: Métadonnées du mod
+        """
+        return self._metadata
+
+    @property
+    def state(self) -> ModState:
+        """
+        Obtenir l'état actuel du mod
+        
+        Returns:
+            ModState: État du mod
+        """
+        return self._state
+
+    @property
+    def priority(self) -> int:
+        """
+        Obtenir la priorité du mod
+        
+        Returns:
+            int: Priorité du mod
+        """
+        return self._priority
+
+    def update_config(self, config: Dict[str, Any]):
+        """
+        Mettre à jour la configuration du mod
+        
+        Args:
+            config (Dict[str, Any]): Nouvelle configuration
+        """
+        self._config.update(config)
+        self._logger.info(f"Configuration mise à jour : {config}")
+
     @abstractmethod
-    def activate(self, context: Dict[str, Any] = None) -> bool:
+    def activate(self, context: Optional[Dict[str, Any]] = None) -> bool:
         """
-        Active le mod avec le contexte actuel.
+        Activer le mod
         
         Args:
-            context: Dictionnaire contenant le contexte du système
-            
+            context (dict, optional): Contexte d'activation
+        
         Returns:
             bool: True si l'activation a réussi, False sinon
         """
         pass
-    
+
     @abstractmethod
     def deactivate(self) -> bool:
         """
-        Désactive le mod.
+        Désactiver le mod
         
         Returns:
             bool: True si la désactivation a réussi, False sinon
         """
         pass
-    
-    def update_settings(self, settings: Dict[str, Any]) -> None:
+
+    def _update_activation_metrics(self, success: bool):
         """
-        Met à jour les paramètres du mod.
+        Mettre à jour les métriques d'activation
         
         Args:
-            settings: Dictionnaire de paramètres à mettre à jour
+            success (bool): Indique si l'activation/désactivation a réussi
         """
-        self.settings.update(settings)
-        self.logger.info(f"Paramètres mis à jour pour {self.name}")
-    
-    def get_status(self) -> Dict[str, Any]:
+        current_time = datetime.now()
+        
+        if success and self._state == ModState.ACTIVE:
+            self._metadata.activation_count += 1
+            self._metadata.last_activated = current_time
+            
+            if self._activation_start:
+                duration = (current_time - self._activation_start).total_seconds()
+                self._metadata.total_activation_time += int(duration)
+        
+        # Réinitialiser le timestamp de démarrage
+        self._activation_start = current_time if success else None
+
+    def _log_state_change(self, old_state: ModState, new_state: ModState):
         """
-        Retourne l'état actuel du mod.
+        Journaliser les changements d'état
+        
+        Args:
+            old_state (ModState): État précédent
+            new_state (ModState): Nouvel état
+        """
+        self._logger.info(f"Changement d'état : {old_state.name} -> {new_state.name}")
+
+    def validate_config(self, config: Dict[str, Any]) -> bool:
+        """
+        Valider la configuration du mod
+        
+        Args:
+            config (Dict[str, Any]): Configuration à valider
         
         Returns:
-            Dict: État du mod avec ses propriétés
+            bool: True si la configuration est valide, False sinon
         """
-        return {
-            "name": self.name,
-            "description": self.description,
-            "is_active": self.is_active,
-            "priority": self.priority,
-            "settings": self.settings
-        }
-    
-    def __str__(self) -> str:
-        """Représentation textuelle du mod."""
-        status = "actif" if self.is_active else "inactif"
-        return f"{self.name} ({status}) - Priorité: {self.priority}"
+        # Implémentation de base - à surcharger par les mods spécifiques
+        return isinstance(config, dict)

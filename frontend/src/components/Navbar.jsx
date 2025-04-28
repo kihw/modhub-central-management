@@ -22,7 +22,7 @@ import {
   Info as InfoIcon,
   DashboardCustomize as DashboardIcon
 } from '@mui/icons-material';
-import { AppContext } from '../context/AppContext';
+import { AppContext } from '@/context/AppContext.jsx';
 import { styled } from '@mui/material/styles';
 
 const NavbarButton = styled(Button)(({ theme }) => ({
