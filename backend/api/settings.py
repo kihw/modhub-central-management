@@ -15,7 +15,7 @@ PROJECT_NAME = "DeviceControlHub"
 # CORS settings
 CORS_ORIGINS = [
     "http://localhost:3000",
-    "http://localhost:8000",
+    "http://localhost:8668",
     "http://localhost:5173",
     "electron://localhost"
 ]

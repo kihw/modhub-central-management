@@ -19,7 +19,7 @@ const Sidebar = ({ collapsed, setCollapsed }) => {
     const fetchActiveModsCount = async () => {
       try {
         const response = await fetch(
-          "http://localhost:8000/api/mods/active/count"
+          "http://localhost:8668/api/mods/active/count"
         );
         const data = await response.json();
         setActiveModCount(data.count);
