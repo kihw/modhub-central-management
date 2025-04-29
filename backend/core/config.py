@@ -39,9 +39,15 @@ class ModHubSettings(BaseSettings):
     
     # Application settings
     APP_NAME: str = Field("ModHub Central", validation_alias="MODHUB_APP_NAME")
-    APP_VERSION: str = Field("0.1.0", validation_alias="MODHUB_APP_VERSION")
+    APP_VERSION: str = Field("0.2.0", validation_alias="MODHUB_APP_VERSION")
     LOG_LEVEL: str = Field("INFO", validation_alias="MODHUB_LOG_LEVEL")
     DATA_DIR: str = Field("../data", validation_alias="MODHUB_DATA_DIR")
+    
+    # Sentry settings
+    SENTRY_DSN: Optional[str] = Field(None, validation_alias="MODHUB_SENTRY_DSN")
+    SENTRY_ENVIRONMENT: str = Field("development", validation_alias="MODHUB_SENTRY_ENVIRONMENT")
+    SENTRY_TRACES_SAMPLE_RATE: float = Field(0.1, validation_alias="MODHUB_SENTRY_TRACES_SAMPLE_RATE")
+    SENTRY_PROFILES_SAMPLE_RATE: float = Field(0.1, validation_alias="MODHUB_SENTRY_PROFILES_SAMPLE_RATE")
     
     # Behavior settings
     AUTO_START_MODS: bool = Field(True, validation_alias="MODHUB_AUTO_START_MODS")
@@ -105,54 +111,6 @@ class ModHubSettings(BaseSettings):
             "CRITICAL": logging.CRITICAL
         }
         return level_map.get(self.LOG_LEVEL.upper(), logging.INFO)
-
-
-def load_config_file(config_path: str) -> Dict[str, Any]:
-    """
-    Load configuration from a JSON file.
-    
-    Args:
-        config_path: Path to the configuration file
-        
-    Returns:
-        Configuration dictionary
-    """
-    try:
-        config_file = Path(config_path)
-        if not config_file.exists():
-            logger.warning(f"Config file not found: {config_path}")
-            return {}
-            
-        with open(config_file, 'r') as f:
-            return json.load(f)
-    except Exception as e:
-        logger.error(f"Error loading config file: {e}")
-        return {}
-
-
-def merge_configs(base_config: Dict[str, Any], override_config: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Merge two configuration dictionaries, with override_config taking precedence.
-    
-    Args:
-        base_config: Base configuration
-        override_config: Configuration that overrides base values
-        
-    Returns:
-        Merged configuration
-    """
-    result = base_config.copy()
-    
-    for key, value in override_config.items():
-        if key in result and isinstance(result[key], dict) and isinstance(value, dict):
-            # Recursively merge nested dictionaries
-            result[key] = merge_configs(result[key], value)
-        else:
-            # Override or add the value
-            result[key] = value
-            
-    return result
-
 
 # Create the settings instance
 settings = ModHubSettings()
