@@ -30,11 +30,15 @@ class ModManager:
         """Initialize and register the default system mods."""
         try:
             self.register_mod("gaming", GamingMod())
-            self.register_mod("night", NightMod(None))  # Note: We'll need to fix the None device_controller later
+            
+            # Initialiser NightMod sans dépendance à DeviceController
+            night_mod = NightMod(device_controller=None)
+            self.register_mod("night", night_mod)
+            
             self.register_mod("media", MediaMod())
             logger.info("Default mods registered successfully")
         except Exception as e:
-            logger.error(f"Error registering default mods: {e}")
+            logger.error(f"Error registering default mods: {e}", exc_info=True)
 
     def register_mod(self, mod_id: str, mod_instance: ModBase) -> bool:
         """
@@ -118,7 +122,7 @@ class ModManager:
                     logger.warning(f"Mod '{mod_id}' activation failed")
                     return False
             except Exception as e:
-                logger.error(f"Error activating mod '{mod_id}': {e}")
+                logger.error(f"Error activating mod '{mod_id}': {e}", exc_info=True)
                 return False
 
     def deactivate_mod(self, mod_id: str) -> bool:
@@ -152,7 +156,7 @@ class ModManager:
                     logger.warning(f"Mod '{mod_id}' deactivation failed")
                     return False
             except Exception as e:
-                logger.error(f"Error deactivating mod '{mod_id}': {e}")
+                logger.error(f"Error deactivating mod '{mod_id}': {e}", exc_info=True)
                 return False
 
     def _check_conflicts(self, mod: ModBase) -> List[str]:
