@@ -1,356 +1,367 @@
+"""
+Automation Engine module for ModHub Central.
+Manages rule evaluation, triggering, and action execution.
+"""
+
 import logging
 import time
 import threading
-import psutil
 import datetime
-from typing import List, Dict, Any, Callable, Optional
-from enum import Enum, auto
-import inspect
+from typing import List, Dict, Any, Callable, Optional, Set, Tuple
 
-class ConditionType(Enum):
-    PROCESS_RUNNING = auto()
-    TIME_RANGE = auto()
-    SYSTEM_STATE = auto()
-    RESOURCE_USAGE = auto()
-    CUSTOM = auto()
+# Local imports
+from . import conditions
+from . import actions
+from ..mods.mod_manager import ModManager
+from ...db.models import AutomationRule, Condition, Action
 
-class ActionType(Enum):
-    MOD_ACTIVATION = auto()
-    MOD_DEACTIVATION = auto()
-    SYSTEM_COMMAND = auto()
-    NOTIFICATION = auto()
-    CUSTOM = auto()
-
-class SystemStateChecker:
-    """
-    Utility class for checking various system states
-    """
-    @staticmethod
-    def is_process_running(process_name: str) -> bool:
-        """
-        Check if a specific process is running
-        
-        Args:
-            process_name (str): Name of the process to check
-        
-        Returns:
-            bool: True if process is running, False otherwise
-        """
-        for proc in psutil.process_iter(['name']):
-            if proc.info['name'].lower() == process_name.lower():
-                return True
-        return False
-    
-    @staticmethod
-    def check_resource_usage(resource_type: str, threshold: float) -> bool:
-        """
-        Check system resource usage
-        
-        Args:
-            resource_type (str): Type of resource (cpu, memory, disk)
-            threshold (float): Usage threshold percentage
-        
-        Returns:
-            bool: True if usage is above threshold, False otherwise
-        """
-        try:
-            if resource_type == 'cpu':
-                return psutil.cpu_percent() > threshold
-            elif resource_type == 'memory':
-                return psutil.virtual_memory().percent > threshold
-            elif resource_type == 'disk':
-                return psutil.disk_usage('/').percent > threshold
-            else:
-                raise ValueError(f"Unknown resource type: {resource_type}")
-        except Exception as e:
-            logging.error(f"Error checking resource usage: {e}")
-            return False
-
-class AutomationRule:
-    """
-    Represents a single automation rule with advanced validation and execution
-    """
-    def __init__(
-        self, 
-        name: str, 
-        conditions: List[Dict[str, Any]], 
-        actions: List[Dict[str, Any]],
-        priority: int = 5,
-        enabled: bool = True
-    ):
-        self.name = name
-        self.conditions = conditions
-        self.actions = actions
-        self.priority = priority
-        self.enabled = enabled
-        self.last_executed = None
-        self.execution_count = 0
-        self.logger = logging.getLogger(__name__)
-        
-        self._validate_rule()
-
-    def _validate_rule(self):
-        """
-        Validate the rule's structure and components
-        
-        Raises:
-            ValueError: If rule is improperly configured
-        """
-        # Validate conditions
-        for condition in self.conditions:
-            if 'type' not in condition or 'parameters' not in condition:
-                raise ValueError(f"Invalid condition in rule {self.name}")
-            
-            try:
-                ConditionType[condition['type'].upper()]
-            except KeyError:
-                raise ValueError(f"Unknown condition type: {condition['type']}")
-        
-        # Validate actions
-        for action in self.actions:
-            if 'type' not in action or 'parameters' not in action:
-                raise ValueError(f"Invalid action in rule {self.name}")
-            
-            try:
-                ActionType[action['type'].upper()]
-            except KeyError:
-                raise ValueError(f"Unknown action type: {action['type']}")
+logger = logging.getLogger(__name__)
 
 class AutomationEngine:
     """
-    Sophisticated automation engine with advanced rule processing
+    Core automation engine that evaluates conditions and executes actions
+    based on system state and defined rules.
     """
-    def __init__(self, mod_manager=None):
-        self._rules: List[AutomationRule] = []
-        self._condition_checkers: Dict[ConditionType, Callable] = {
-            ConditionType.PROCESS_RUNNING: self._check_process_condition,
-            ConditionType.TIME_RANGE: self._check_time_condition,
-            ConditionType.RESOURCE_USAGE: self._check_resource_condition
-        }
-        self._action_executors: Dict[ActionType, Callable] = {
-            ActionType.MOD_ACTIVATION: self._execute_mod_activation,
-            ActionType.MOD_DEACTIVATION: self._execute_mod_deactivation,
-            ActionType.NOTIFICATION: self._execute_notification
-        }
-        self._rule_lock = threading.Lock()
-        self._mod_manager = mod_manager
+    def __init__(self, mod_manager: Optional[ModManager] = None, db_session=None):
+        self.mod_manager = mod_manager
+        self.db_session = db_session
+        
+        # Internal state
+        self._rules: Dict[int, Dict] = {}  # Rule ID -> Rule data
+        self._rules_lock = threading.Lock()
+        self._processing_thread = None
+        self._should_stop = threading.Event()
+        self._last_evaluation: Dict[int, datetime.datetime] = {}
+        
+        # Initialize condition and action handlers
+        self._condition_evaluator = conditions.ConditionEvaluator()
+        self._action_runner = actions.ActionRunner()
+        
+        # Logging
         self.logger = logging.getLogger(__name__)
+        self.logger.info("Automation Engine initialized")
 
-    def add_rule(self, rule: AutomationRule):
+    def start(self, interval: float = 1.0):
         """
-        Add a new automation rule
+        Start the automation engine processing loop.
         
         Args:
-            rule (AutomationRule): Rule to add
+            interval: Time between rule evaluations in seconds
         """
-        with self._rule_lock:
-            # Check for duplicate rule names
-            if any(existing_rule.name == rule.name for existing_rule in self._rules):
-                self.logger.warning(f"Rule {rule.name} already exists. Replacing.")
+        if self._processing_thread and self._processing_thread.is_alive():
+            self.logger.warning("Automation engine is already running")
+            return
             
-            # Add rule, sorting by priority (descending)
-            self._rules.append(rule)
-            self._rules.sort(key=lambda r: r.priority, reverse=True)
+        self._should_stop.clear()
+        self._processing_thread = threading.Thread(
+            target=self._process_rules_loop,
+            args=(interval,),
+            daemon=True
+        )
+        self._processing_thread.start()
+        self.logger.info(f"Automation engine started with {interval}s interval")
 
-    def process_rules(self):
-        """
-        Process all enabled rules
-        """
-        for rule in self._rules:
-            if not rule.enabled:
-                continue
+    def stop(self):
+        """Stop the automation engine processing loop."""
+        if not self._processing_thread or not self._processing_thread.is_alive():
+            self.logger.warning("Automation engine is not running")
+            return
+            
+        self._should_stop.set()
+        self._processing_thread.join(timeout=5.0)
+        if self._processing_thread.is_alive():
+            self.logger.warning("Failed to stop automation engine cleanly")
+        else:
+            self.logger.info("Automation engine stopped")
+            self._processing_thread = None
 
+    def _process_rules_loop(self, interval: float):
+        """
+        Main processing loop that evaluates rules periodically.
+        
+        Args:
+            interval: Time between evaluations in seconds
+        """
+        self.logger.info("Rule processing loop started")
+        
+        while not self._should_stop.is_set():
             try:
-                # Check if all conditions are met
-                if self._evaluate_rule_conditions(rule):
-                    # Execute rule actions
-                    self._execute_rule_actions(rule)
-                    
-                    # Update rule execution metadata
-                    rule.last_executed = time.time()
-                    rule.execution_count += 1
+                self.evaluate_all_rules()
             except Exception as e:
-                self.logger.error(f"Error processing rule {rule.name}: {e}")
+                self.logger.error(f"Error in rule processing loop: {e}", exc_info=True)
+                
+            # Wait for the next interval or until stopped
+            self._should_stop.wait(interval)
+            
+        self.logger.info("Rule processing loop ended")
 
-    def _evaluate_rule_conditions(self, rule: AutomationRule) -> bool:
+    def register_rule(self, rule: AutomationRule):
         """
-        Evaluate all conditions for a given rule
+        Register a rule with the engine.
         
         Args:
-            rule (AutomationRule): Rule to evaluate
-        
-        Returns:
-            bool: True if all conditions are met, False otherwise
+            rule: Rule to register
         """
-        for condition in rule.conditions:
-            condition_type = ConditionType[condition['type'].upper()]
-            
-            # Find appropriate condition checker
-            condition_checker = self._condition_checkers.get(condition_type)
-            if not condition_checker:
-                self.logger.warning(f"No checker found for condition type {condition_type}")
-                return False
-            
-            # Check the condition
-            if not condition_checker(condition['parameters']):
-                return False
-        
-        return True
+        with self._rules_lock:
+            rule_data = self._convert_rule_to_dict(rule)
+            self._rules[rule.id] = rule_data
+            self.logger.info(f"Registered rule: {rule.name} (ID: {rule.id})")
 
-    def _execute_rule_actions(self, rule: AutomationRule):
+    def unregister_rule(self, rule_id: int):
         """
-        Execute all actions for a given rule
+        Unregister a rule from the engine.
         
         Args:
-            rule (AutomationRule): Rule to execute
+            rule_id: ID of the rule to unregister
         """
-        for action in rule.actions:
-            action_type = ActionType[action['type'].upper()]
+        with self._rules_lock:
+            if rule_id in self._rules:
+                rule_name = self._rules[rule_id].get('name', 'Unknown')
+                del self._rules[rule_id]
+                self.logger.info(f"Unregistered rule: {rule_name} (ID: {rule_id})")
+            else:
+                self.logger.warning(f"Attempted to unregister unknown rule ID: {rule_id}")
+
+    def update_rule(self, rule: AutomationRule):
+        """
+        Update a registered rule.
+        
+        Args:
+            rule: Updated rule
+        """
+        with self._rules_lock:
+            if rule.id in self._rules:
+                rule_data = self._convert_rule_to_dict(rule)
+                self._rules[rule.id] = rule_data
+                self.logger.info(f"Updated rule: {rule.name} (ID: {rule.id})")
+            else:
+                self.register_rule(rule)
+
+    def evaluate_all_rules(self):
+        """Evaluate all registered rules against current system state."""
+        with self._rules_lock:
+            # Make a copy of rules to avoid lock during evaluation
+            rules_to_process = list(self._rules.values())
             
-            # Find appropriate action executor
-            action_executor = self._action_executors.get(action_type)
-            if not action_executor:
-                self.logger.warning(f"No executor found for action type {action_type}")
+        # Sort rules by priority (highest first)
+        rules_to_process.sort(key=lambda r: r.get('priority', 0), reverse=True)
+        
+        for rule_data in rules_to_process:
+            rule_id = rule_data.get('id')
+            
+            # Skip inactive rules
+            if not rule_data.get('is_active', False):
                 continue
+                
+            try:
+                conditions_met = self._evaluate_rule_conditions(rule_data)
+                
+                if conditions_met:
+                    self._execute_rule_actions(rule_data)
+                    self._update_rule_triggered(rule_id)
+            except Exception as e:
+                self.logger.error(f"Error evaluating rule {rule_id}: {e}", exc_info=True)
+
+    def _evaluate_rule_conditions(self, rule_data: Dict) -> bool:
+        """
+        Evaluate all conditions for a rule.
+        
+        Args:
+            rule_data: Rule data dictionary
             
-            # Execute the action
-            action_executor(action['parameters'])
-
-    def _check_process_condition(self, parameters: Dict[str, Any]) -> bool:
+        Returns:
+            True if all conditions are met, False otherwise
         """
-        Check if specified processes are running
+        rule_id = rule_data.get('id')
+        conditions_data = rule_data.get('conditions', [])
+        
+        if not conditions_data:
+            # If no conditions are defined, rule is always triggered
+            self.logger.debug(f"Rule {rule_id} has no conditions, automatically met")
+            return True
+            
+        # Track which conditions are met
+        all_conditions_met = True
+        
+        # Local context for condition evaluation
+        context = {
+            'current_time': datetime.datetime.now(),
+            'rule_id': rule_id
+        }
+        
+        # Special handling for different condition combination logic
+        # By default, we use AND logic (all conditions must be met)
+        for condition in conditions_data:
+            condition_type = condition.get('condition_type')
+            parameters = condition.get('parameters', {})
+            
+            # Evaluate the condition
+            try:
+                condition_met = self._condition_evaluator.evaluate_single(
+                    condition_type, 
+                    parameters,
+                    context
+                )
+                
+                if not condition_met:
+                    all_conditions_met = False
+                    
+                    # If using AND logic and a condition fails, we can stop early
+                    logic_op = condition.get('logic_operator', 'AND')
+                    if logic_op == 'AND':
+                        self.logger.debug(f"Rule {rule_id}: Condition {condition_type} not met, stopping early")
+                        break
+                else:
+                    # If using OR logic and a condition passes, we can stop early
+                    logic_op = condition.get('logic_operator', 'AND')
+                    if logic_op == 'OR':
+                        self.logger.debug(f"Rule {rule_id}: Condition {condition_type} met, OR condition satisfied")
+                        all_conditions_met = True
+                        break
+                        
+            except Exception as e:
+                self.logger.error(f"Error evaluating condition for rule {rule_id}: {e}", exc_info=True)
+                all_conditions_met = False
+                break
+                
+        return all_conditions_met
+
+    def _execute_rule_actions(self, rule_data: Dict):
+        """
+        Execute all actions for a rule.
         
         Args:
-            parameters (Dict[str, Any]): Condition parameters
+            rule_data: Rule data dictionary
+        """
+        rule_id = rule_data.get('id')
+        actions_data = rule_data.get('actions', [])
+        
+        if not actions_data:
+            self.logger.warning(f"Rule {rule_id} has no actions defined")
+            return
+            
+        for action in actions_data:
+            action_type = action.get('action_type')
+            parameters = action.get('parameters', {})
+            
+            try:
+                self.logger.info(f"Executing action {action_type} for rule {rule_id}")
+                success = self._action_runner.execute_action(
+                    action_type,
+                    parameters,
+                    {
+                        'rule_id': rule_id,
+                        'mod_manager': self.mod_manager
+                    }
+                )
+                
+                if not success:
+                    self.logger.warning(f"Action {action_type} for rule {rule_id} failed")
+            except Exception as e:
+                self.logger.error(f"Error executing action {action_type} for rule {rule_id}: {e}", exc_info=True)
+                # Continue with next action even if one fails
+
+    def _update_rule_triggered(self, rule_id: int):
+        """
+        Update the last triggered timestamp for a rule.
+        
+        Args:
+            rule_id: ID of the triggered rule
+        """
+        self._last_evaluation[rule_id] = datetime.datetime.now()
+        
+        # Update in database if session is available
+        if self.db_session:
+            try:
+                from ...db.crud import get_rule, update_rule
+                
+                rule = get_rule(self.db_session, rule_id)
+                if rule:
+                    rule.last_triggered = datetime.datetime.now()
+                    self.db_session.commit()
+            except Exception as e:
+                self.logger.error(f"Error updating rule triggered status: {e}", exc_info=True)
+
+    def _convert_rule_to_dict(self, rule: AutomationRule) -> Dict:
+        """
+        Convert an AutomationRule model to a dictionary for internal use.
+        
+        Args:
+            rule: Rule model to convert
+            
+        Returns:
+            Dictionary representation of the rule
+        """
+        rule_dict = {
+            'id': rule.id,
+            'name': rule.name,
+            'description': rule.description,
+            'priority': rule.priority,
+            'is_active': rule.is_active,
+            'last_triggered': rule.last_triggered,
+            'conditions': [],
+            'actions': []
+        }
+        
+        # Add conditions
+        for condition in rule.conditions:
+            rule_dict['conditions'].append({
+                'id': condition.id,
+                'condition_type': condition.condition_type,
+                'parameters': condition.parameters,
+                'logic_operator': condition.logic_operator
+            })
+            
+        # Add actions
+        for action in rule.actions:
+            rule_dict['actions'].append({
+                'id': action.id,
+                'action_type': action.action_type,
+                'parameters': action.parameters
+            })
+            
+        return rule_dict
+
+    def get_available_conditions(self) -> List[str]:
+        """
+        Get list of available condition types.
         
         Returns:
-            bool: True if condition is met, False otherwise
+            List of condition type names
         """
-        process_names = parameters.get('processes', [])
-        match_type = parameters.get('match_type', 'any')  # 'any' or 'all'
-        
-        if match_type == 'any':
-            return any(SystemStateChecker.is_process_running(p) for p in process_names)
-        else:
-            return all(SystemStateChecker.is_process_running(p) for p in process_names)
+        return self._condition_evaluator.get_available_conditions()
 
-    def _check_time_condition(self, parameters: Dict[str, Any]) -> bool:
+    def get_available_actions(self) -> List[str]:
         """
-        Check if current time matches specified time range
-        
-        Args:
-            parameters (Dict[str, Any]): Condition parameters
+        Get list of available action types.
         
         Returns:
-            bool: True if condition is met, False otherwise
+            List of action type names
         """
-        now = datetime.datetime.now().time()
-        
-        start_time_str = parameters.get('start_time')
-        end_time_str = parameters.get('end_time')
-        
-        if not start_time_str or not end_time_str:
-            return False
-        
-        start_time = datetime.datetime.strptime(start_time_str, '%H:%M').time()
-        end_time = datetime.datetime.strptime(end_time_str, '%H:%M').time()
-        
-        # Handle overnight time ranges
-        if start_time > end_time:
-            return now >= start_time or now <= end_time
-        else:
-            return start_time <= now <= end_time
+        return self._action_runner.get_available_actions()
 
-    def _check_resource_condition(self, parameters: Dict[str, Any]) -> bool:
+    def get_rule_status(self, rule_id: int) -> Dict:
         """
-        Check system resource usage
+        Get the current status of a rule.
         
         Args:
-            parameters (Dict[str, Any]): Condition parameters
-        
+            rule_id: ID of the rule
+            
         Returns:
-            bool: True if condition is met, False otherwise
+            Dictionary with rule status information
         """
-        resource_type = parameters.get('type')
-        threshold = parameters.get('threshold', 80)
-        
-        return SystemStateChecker.check_resource_usage(resource_type, threshold)
-
-    def _execute_mod_activation(self, parameters: Dict[str, Any]):
-        """
-        Activate a mod
-        
-        Args:
-            parameters (Dict[str, Any]): Action parameters
-        """
-        if not self._mod_manager:
-            self.logger.warning("No mod manager available")
-            return
-        
-        mod_id = parameters.get('mod_id')
-        if not mod_id:
-            self.logger.warning("No mod ID specified for activation")
-            return
-        
-        self._mod_manager.activate_mod(mod_id)
-
-    def _execute_mod_deactivation(self, parameters: Dict[str, Any]):
-        """
-        Deactivate a mod
-        
-        Args:
-            parameters (Dict[str, Any]): Action parameters
-        """
-        if not self._mod_manager:
-            self.logger.warning("No mod manager available")
-            return
-        
-        mod_id = parameters.get('mod_id')
-        if not mod_id:
-            self.logger.warning("No mod ID specified for deactivation")
-            return
-        
-        self._mod_manager.deactivate_mod(mod_id)
-
-    def _execute_notification(self, parameters: Dict[str, Any]):
-        """
-        Send a notification
-        
-        Args:
-            parameters (Dict[str, Any]): Notification parameters
-        """
-        message = parameters.get('message', 'No message')
-        title = parameters.get('title', 'ModHub Notification')
-        
-        # In a real application, this would use a notification service
-        self.logger.info(f"NOTIFICATION - {title}: {message}")
-
-    def register_custom_condition_checker(self, condition_type: ConditionType, checker: Callable):
-        """
-        Register a custom condition checker
-        
-        Args:
-            condition_type (ConditionType): Type of condition
-            checker (Callable): Function to check the condition
-        """
-        # Validate checker signature
-        sig = inspect.signature(checker)
-        if len(sig.parameters) != 1:
-            raise ValueError("Condition checker must accept one parameter (dict)")
-        
-        self._condition_checkers[condition_type] = checker
-
-    def register_custom_action_executor(self, action_type: ActionType, executor: Callable):
-        """
-        Register a custom action executor
-        
-        Args:
-            action_type (ActionType): Type of action
-            executor (Callable): Function to execute the action
-        """
-        # Validate executor signature
-        sig = inspect.signature(executor)
-        if len(sig.parameters) != 1:
-            raise ValueError("Action executor must accept one parameter (dict)")
-        
-        self._action_executors[action_type] = executor
+        with self._rules_lock:
+            if rule_id not in self._rules:
+                return {'error': 'Rule not found'}
+                
+            rule_data = self._rules[rule_id]
+            last_triggered = self._last_evaluation.get(rule_id)
+            
+            return {
+                'id': rule_id,
+                'name': rule_data.get('name'),
+                'is_active': rule_data.get('is_active', False),
+                'last_triggered': last_triggered.isoformat() if last_triggered else None,
+                'conditions_count': len(rule_data.get('conditions', [])),
+                'actions_count': len(rule_data.get('actions', []))
+            }
