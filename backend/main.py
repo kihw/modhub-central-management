@@ -13,7 +13,6 @@ from pathlib import Path
 from fastapi import FastAPI, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from sqlalchemy.orm import Session
 import time
 
 # Import routes
@@ -62,10 +61,10 @@ app = FastAPI(
     version="0.1.0"
 )
 
-# Add CORS middleware
+# Add CORS middleware with explicit origin configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, restrict this to specific origins
+    allow_origins=["http://localhost:3000"],  # Frontend development server
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -155,12 +154,27 @@ async def root():
         "docs_url": "/docs"
     }
 
+# Add a direct status endpoint for frontend health checks
+@app.get("/api/status")
+async def api_status():
+    """API status endpoint for frontend health checks"""
+    return {
+        "status": "online",
+        "version": "0.1.0",
+        "services": {
+            "processScan": True if process_monitor else False,
+            "modEngine": True if mod_manager else False,
+            "automation": True if automation_engine else False
+        },
+        "uptime": time.time()
+    }
+
 if __name__ == "__main__":
     # Run the application with uvicorn when executed directly
     uvicorn.run(
         "main:app",
-        host=app_settings.HOST,
-        port=app_settings.PORT,
-        reload=True,
+        host="0.0.0.0",  # Bind to all interfaces
+        port=8668,
+        reload=True if app_settings.DEBUG else False,
         log_level="info"
     )
