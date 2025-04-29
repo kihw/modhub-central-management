@@ -8,8 +8,11 @@ import os
 import json
 import logging
 from pathlib import Path
-from typing import Dict, Any, Optional
-from pydantic import BaseSettings, Field
+from typing import Dict, Any, Optional, List
+
+# Importation depuis pydantic-settings au lieu de pydantic
+from pydantic_settings import BaseSettings
+from pydantic import Field
 
 logger = logging.getLogger(__name__)
 
@@ -21,39 +24,38 @@ class ModHubSettings(BaseSettings):
     e.g., MODHUB_HOST, MODHUB_PORT, etc.
     """
     # API Server settings
-    HOST: str = Field("0.0.0.0", env="MODHUB_HOST")
-    PORT: int = Field(8668, env="MODHUB_PORT")
-    DEBUG: bool = Field(False, env="MODHUB_DEBUG")
+    HOST: str = Field("0.0.0.0", validation_alias="MODHUB_HOST")
+    PORT: int = Field(8668, validation_alias="MODHUB_PORT")
+    DEBUG: bool = Field(False, validation_alias="MODHUB_DEBUG")
     
     # Database settings
-    DB_TYPE: str = Field("sqlite", env="MODHUB_DB_TYPE")
-    DB_PATH: str = Field("../data/database.sqlite", env="MODHUB_DB_PATH")
-    DB_HOST: Optional[str] = Field(None, env="MODHUB_DB_HOST")
-    DB_PORT: Optional[int] = Field(None, env="MODHUB_DB_PORT")
-    DB_NAME: Optional[str] = Field(None, env="MODHUB_DB_NAME")
-    DB_USER: Optional[str] = Field(None, env="MODHUB_DB_USER")
-    DB_PASSWORD: Optional[str] = Field(None, env="MODHUB_DB_PASSWORD")
+    DB_TYPE: str = Field("sqlite", validation_alias="MODHUB_DB_TYPE")
+    DB_PATH: str = Field("../data/database.sqlite", validation_alias="MODHUB_DB_PATH")
+    DB_HOST: Optional[str] = Field(None, validation_alias="MODHUB_DB_HOST")
+    DB_PORT: Optional[int] = Field(None, validation_alias="MODHUB_DB_PORT")
+    DB_NAME: Optional[str] = Field(None, validation_alias="MODHUB_DB_NAME")
+    DB_USER: Optional[str] = Field(None, validation_alias="MODHUB_DB_USER")
+    DB_PASSWORD: Optional[str] = Field(None, validation_alias="MODHUB_DB_PASSWORD")
     
     # Application settings
-    APP_NAME: str = Field("ModHub Central", env="MODHUB_APP_NAME")
-    APP_VERSION: str = Field("0.1.0", env="MODHUB_APP_VERSION")
-    LOG_LEVEL: str = Field("INFO", env="MODHUB_LOG_LEVEL")
-    DATA_DIR: str = Field("../data", env="MODHUB_DATA_DIR")
+    APP_NAME: str = Field("ModHub Central", validation_alias="MODHUB_APP_NAME")
+    APP_VERSION: str = Field("0.1.0", validation_alias="MODHUB_APP_VERSION")
+    LOG_LEVEL: str = Field("INFO", validation_alias="MODHUB_LOG_LEVEL")
+    DATA_DIR: str = Field("../data", validation_alias="MODHUB_DATA_DIR")
     
     # Behavior settings
-    AUTO_START_MODS: bool = Field(True, env="MODHUB_AUTO_START_MODS")
-    RULE_CHECK_INTERVAL: float = Field(2.0, env="MODHUB_RULE_CHECK_INTERVAL")
-    PROCESS_SCAN_INTERVAL: float = Field(5.0, env="MODHUB_PROCESS_SCAN_INTERVAL")
-    ENABLE_MOD_CONFLICT_RESOLUTION: bool = Field(True, env="MODHUB_ENABLE_MOD_CONFLICT_RESOLUTION")
+    AUTO_START_MODS: bool = Field(True, validation_alias="MODHUB_AUTO_START_MODS")
+    RULE_CHECK_INTERVAL: float = Field(2.0, validation_alias="MODHUB_RULE_CHECK_INTERVAL")
+    PROCESS_SCAN_INTERVAL: float = Field(5.0, validation_alias="MODHUB_PROCESS_SCAN_INTERVAL")
+    ENABLE_MOD_CONFLICT_RESOLUTION: bool = Field(True, validation_alias="MODHUB_ENABLE_MOD_CONFLICT_RESOLUTION")
     
     # Security settings
-    ENABLE_CORS: bool = Field(True, env="MODHUB_ENABLE_CORS")
-    CORS_ORIGINS: str = Field("*", env="MODHUB_CORS_ORIGINS")
-    API_KEY_REQUIRED: bool = Field(False, env="MODHUB_API_KEY_REQUIRED")
-    API_KEY: Optional[str] = Field(None, env="MODHUB_API_KEY")
+    ENABLE_CORS: bool = Field(True, validation_alias="MODHUB_ENABLE_CORS")
+    CORS_ORIGINS: str = Field("*", validation_alias="MODHUB_CORS_ORIGINS")
+    API_KEY_REQUIRED: bool = Field(False, validation_alias="MODHUB_API_KEY_REQUIRED")
+    API_KEY: Optional[str] = Field(None, validation_alias="MODHUB_API_KEY")
     
     class Config:
-        env_prefix = "MODHUB_"
         env_file = ".env"
         env_file_encoding = "utf-8"
         case_sensitive = True
@@ -77,7 +79,7 @@ class ModHubSettings(BaseSettings):
         else:
             raise ValueError(f"Unsupported database type: {self.DB_TYPE}")
             
-    def get_cors_origins(self) -> list:
+    def get_cors_origins(self) -> List[str]:
         """
         Get CORS origins as a list.
         
