@@ -1,9 +1,15 @@
 from datetime import datetime, time
 from typing import Optional, Dict, Any
 import logging
+import time as time_module
 
-from device_control import DeviceController
-from ...db.models import Settings, Room
+# Import modifié pour éviter l'erreur de module non trouvé
+# from device_control import DeviceController - cette ligne causait l'erreur
+# Utilisons une classe fictive pour le développement
+class DeviceController:
+    """Classe temporaire pour remplacer l'import manquant"""
+    def __init__(self, *args, **kwargs):
+        pass
 
 logger = logging.getLogger(__name__)
 
@@ -13,12 +19,14 @@ class NightMod:
     nighttime environment with reduced brightness and warmer colors.
     """
     
-    def __init__(self, device_controller: DeviceController):
-        self.device_controller = device_controller
+    def __init__(self, device_controller=None):
+        self.device_controller = device_controller or DeviceController()
         self.active = False
         self.settings = {}
         self.logger = logging.getLogger(__name__)
         self.load_settings()
+        self.activation_reason = None
+        self.is_active = False
         
     def load_settings(self) -> None:
         """Load night mod settings from database"""
@@ -30,7 +38,13 @@ class NightMod:
                 "brightness_level": 30,  # % of normal brightness
                 "color_temp": 2700,     # Kelvin (warm)
                 "affect_rooms": ["bedroom", "living_room", "hallway"],
-                "exclude_rooms": []
+                "exclude_rooms": [],
+                "brightness_reduction": 40,  # %
+                "blue_light_reduction": 80,  # %
+                "color_temperature": 2700,   # Kelvin
+                "smooth_transition": True,
+                "transition_duration_sec": 30,
+                "auto_schedule": True,       # Activer selon l'horaire
             }
             
             # TODO: Load from actual DB when implemented
@@ -87,7 +101,7 @@ class NightMod:
             if self.settings["smooth_transition"]:
                 self.logger.info(f"Transition douce sur {self.settings['transition_duration_sec']} secondes")
                 # Simuler une transition
-                time.sleep(0.5)
+                time_module.sleep(0.5)
             
             self.is_active = True
             self.activation_reason = reason
@@ -132,4 +146,34 @@ class NightMod:
             return True
         except Exception as e:
             self.logger.error(f"Format d'heure invalide: {e}")
+            return False
+            
+    def activate(self, context: Optional[Dict[str, Any]] = None) -> bool:
+        """
+        Activer le Night Mod (requis par l'interface ModBase)
+        
+        Args:
+            context: Contexte d'activation (optionnel)
+        
+        Returns:
+            bool: True si l'activation a réussi
+        """
+        return self._apply_night_settings("manual" if not context else "auto")
+    
+    def deactivate(self) -> bool:
+        """
+        Désactiver le Night Mod (requis par l'interface ModBase)
+        
+        Returns:
+            bool: True si la désactivation a réussi
+        """
+        try:
+            self.logger.info("Désactivation du Night Mod")
+            # Simuler la restauration des paramètres
+            time_module.sleep(0.5)
+            self.is_active = False
+            self.activation_reason = None
+            return True
+        except Exception as e:
+            self.logger.error(f"Erreur lors de la désactivation du Night Mod: {e}")
             return False
