@@ -1,15 +1,18 @@
-# backend/api/mods.py - Corrigé
+# backend/api/mods.py
 from fastapi import APIRouter, HTTPException, Depends, status
 from sqlalchemy.orm import Session
 from typing import List, Optional
+import logging
 
-# Correction des imports
+# Fix imports
 from db.database import get_db
-from db import models  # Correction: remove the space
-from db import schemas  # Correction: remove the space
-from db.schemas import ModResponse, ModCreate, ModUpdate
+from db.models import Mod
+from db.schemas import ModResponse, ModCreate, ModUpdate, ModToggle
 from db.crud import get_mods, get_mod, create_mod, update_mod, delete_mod, toggle_mod
-from core.mods.mod_manager import ModManager  # Maintenant ce sera trouvé
+from core.mods.mod_manager import ModManager
+
+# Create a logger
+logger = logging.getLogger(__name__)
 
 router = APIRouter(
     prefix="/mods",
@@ -58,7 +61,7 @@ async def delete_existing_mod(mod_id: int, db: Session = Depends(get_db)):
 @router.post("/{mod_id}/toggle", response_model=ModResponse)
 async def toggle_mod_status(
     mod_id: int, 
-    toggle_data: schemas.ModToggle, 
+    toggle_data: ModToggle, 
     db: Session = Depends(get_db)
 ):
     """Toggle a mod's active status"""
@@ -89,6 +92,7 @@ async def toggle_mod_status(
             )
         
     return updated_mod
+
 @router.post("/{mod_id}/apply", response_model=ModResponse)
 async def apply_mod(mod_id: int, db: Session = Depends(get_db)):
     """Apply a mod's settings without changing its saved active status"""
@@ -97,6 +101,14 @@ async def apply_mod(mod_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Mod not found")
     
     # Apply the mod through the manager
-    mod_manager.activate_mod(db_mod.type, db_mod.config)
+    try:
+        mod_manager.activate_mod(db_mod.type, db_mod.config)
+        logger.info(f"Mod {mod_id} applied successfully")
+    except Exception as e:
+        logger.error(f"Error applying mod {mod_id}: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to apply mod: {str(e)}"
+        )
     
     return db_mod
