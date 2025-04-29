@@ -1,247 +1,344 @@
-import logging
-from typing import List, Dict, Any, Union, Optional
-from datetime import datetime, time
-import re
-import json
-import operator
+"""
+Condition evaluation module for ModHub Central automation engine.
+Defines condition types and evaluation logic.
+"""
 
-from ...db import models
+import logging
+import re
+import operator
+from datetime import datetime, time
+from typing import Dict, Any, Optional, List, Callable, Tuple
+
+# Import system utilities
+import psutil
 
 logger = logging.getLogger(__name__)
 
 class ConditionEvaluator:
     """
-    Evaluates conditions for automation rules
+    Evaluates different types of conditions for the automation engine.
     """
     def __init__(self):
-        # Mapping of operators to their functions
-        self.operators = {
-            "eq": operator.eq,
-            "neq": operator.ne,
-            "gt": operator.gt,
-            "gte": operator.ge,
-            "lt": operator.lt,
-            "lte": operator.le,
-            "contains": lambda a, b: b in a,
-            "not_contains": lambda a, b: b not in a,
-            "matches": lambda a, b: bool(re.match(b, a)),
+        # Register condition handlers
+        self._condition_handlers = {
+            'process': self._evaluate_process_condition,
+            'time': self._evaluate_time_condition,
+            'day_of_week': self._evaluate_day_of_week_condition,
+            'idle': self._evaluate_idle_condition,
+            'resource': self._evaluate_resource_condition,
+            'custom': self._evaluate_custom_condition,
         }
+        
+        # Operators for comparisons
+        self._operators = {
+            'eq': operator.eq,
+            'neq': operator.ne,
+            'gt': operator.gt,
+            'gte': operator.ge,
+            'lt': operator.lt,
+            'lte': operator.le,
+            'contains': lambda a, b: b in a,
+            'not_contains': lambda a, b: b not in a,
+            'matches': lambda a, b: bool(re.search(b, a)),
+            'in': lambda a, b: a in b,
+            'not_in': lambda a, b: a not in b,
+        }
+        
+        self.logger = logging.getLogger(__name__)
+        self.logger.info("ConditionEvaluator initialized")
 
-    async def evaluate(self, conditions: List[models.Condition], device_controller, db_session) -> bool:
+    def evaluate_single(self, condition_type: str, parameters: Dict[str, Any], context: Dict[str, Any] = None) -> bool:
         """
-        Evaluate all conditions for a rule.
-        Returns True if all conditions are met, False otherwise.
-        """
-        if not conditions:
-            return True  # If no conditions, always trigger
+        Evaluate a single condition.
         
-        results = []
-        
-        for condition in conditions:
-            result = await self.evaluate_single(condition, device_controller, db_session)
-            results.append(result)
+        Args:
+            condition_type: Type of condition to evaluate
+            parameters: Parameters for the condition
+            context: Optional context data for evaluation
             
-            # Early exit for AND logic (if any condition is False)
-            if not result and condition.logic_operator == "AND":
-                return False
-                
-            # Early exit for OR logic (if any condition is True)
-            if result and condition.logic_operator == "OR":
-                return True
-                
-        # If we're still here, check overall result based on default logic
-        if conditions[0].logic_operator == "OR":
-            return any(results)
-        else:  # Default is AND
-            return all(results)
-
-    async def evaluate_single(self, condition: models.Condition, device_controller, db_session) -> bool:
-        """Evaluate a single condition"""
+        Returns:
+            Whether the condition is met
+            
+        Raises:
+            ValueError: If condition type is unknown
+        """
+        if context is None:
+            context = {}
+            
+        condition_type = condition_type.lower()
+        
+        # Get the appropriate handler
+        handler = self._condition_handlers.get(condition_type)
+        if not handler:
+            self.logger.warning(f"Unknown condition type: {condition_type}")
+            raise ValueError(f"Unknown condition type: {condition_type}")
+            
+        # Evaluate the condition
         try:
-            condition_type = condition.condition_type.lower()
-            
-            if condition_type == "device_state":
-                return await self._evaluate_device_state(condition, device_controller)
-            elif condition_type == "time":
-                return self._evaluate_time(condition)
-            elif condition_type == "day_of_week":
-                return self._evaluate_day_of_week(condition)
-            elif condition_type == "numeric_value":
-                return self._evaluate_numeric(condition)
-            elif condition_type == "string_value":
-                return self._evaluate_string(condition)
-            elif condition_type == "variable":
-                return await self._evaluate_variable(condition, db_session)
-            else:
-                logger.warning(f"Unknown condition type: {condition_type}")
-                return False
-                
+            result = handler(parameters, context)
+            return result
         except Exception as e:
-            logger.error(f"Error evaluating condition: {str(e)}")
+            self.logger.error(f"Error evaluating {condition_type} condition: {e}", exc_info=True)
             return False
 
-    async def _evaluate_device_state(self, condition: models.Condition, device_controller) -> bool:
-        """Evaluate a device state condition"""
-        device_id = condition.parameters.get("device_id")
-        property_name = condition.parameters.get("property")
-        expected_value = condition.parameters.get("value")
-        operator_name = condition.parameters.get("operator", "eq")
+    def get_available_conditions(self) -> List[str]:
+        """
+        Get a list of available condition types.
         
-        if not all([device_id, property_name, expected_value is not None]):
-            logger.warning(f"Missing required parameters for device state condition: {condition.parameters}")
-            return False
+        Returns:
+            List of condition type names
+        """
+        return list(self._condition_handlers.keys())
+
+    def _evaluate_process_condition(self, parameters: Dict[str, Any], context: Dict[str, Any]) -> bool:
+        """
+        Evaluate a process-based condition.
         
-        # Get current device state
-        try:
-            current_value = await device_controller.get_device_property(device_id, property_name)
-            operator_func = self.operators.get(operator_name, operator.eq)
+        Args:
+            parameters: Condition parameters
+            context: Evaluation context
             
-            # Convert values to appropriate types
-            if isinstance(expected_value, str) and expected_value.lower() in ["true", "false"]:
-                expected_value = expected_value.lower() == "true"
-                
-            if isinstance(current_value, str) and current_value.lower() in ["true", "false"]:
-                current_value = current_value.lower() == "true"
-                
-            # Numeric comparison
-            if isinstance(expected_value, (int, float)) or (isinstance(expected_value, str) and expected_value.replace(".", "", 1).isdigit()):
-                try:
-                    current_value = float(current_value)
-                    expected_value = float(expected_value)
-                except (ValueError, TypeError):
-                    pass
+        Returns:
+            Whether the condition is met
+        """
+        operation = parameters.get('operation', 'running')
+        process_name = parameters.get('process')
+        match_type = parameters.get('match_type', 'exact')  # exact, contains, regex
+        case_sensitive = parameters.get('case_sensitive', False)
+        processes = parameters.get('processes', [])
+        
+        # If processes list is provided, use that instead of single process
+        if processes and not process_name:
+            # Check if any/all of the processes are running
+            any_all = parameters.get('any_all', 'any')  # any, all
+            
+            if any_all == 'any':
+                return any(self._is_process_running(p, match_type, case_sensitive) for p in processes)
+            else:  # all
+                return all(self._is_process_running(p, match_type, case_sensitive) for p in processes)
+        
+        # Single process check
+        if not process_name:
+            self.logger.warning("Process condition missing process name")
+            return False
+            
+        return self._is_process_running(process_name, match_type, case_sensitive)
+
+    def _is_process_running(self, process_name: str, match_type: str = 'exact', case_sensitive: bool = False) -> bool:
+        """
+        Check if a specific process is running.
+        
+        Args:
+            process_name: Name of the process to check
+            match_type: How to match the process name (exact, contains, regex)
+            case_sensitive: Whether to match case-sensitively
+            
+        Returns:
+            Whether the process is running
+        """
+        if not case_sensitive:
+            process_name = process_name.lower()
+            
+        for proc in psutil.process_iter(['name']):
+            try:
+                current_name = proc.info['name']
+                if not case_sensitive:
+                    current_name = current_name.lower()
                     
-            return operator_func(current_value, expected_value)
-            
-        except Exception as e:
-            logger.error(f"Error getting device state for {device_id}.{property_name}: {str(e)}")
-            return False
+                if match_type == 'exact':
+                    if current_name == process_name:
+                        return True
+                elif match_type == 'contains':
+                    if process_name in current_name:
+                        return True
+                elif match_type == 'regex':
+                    if re.search(process_name, current_name):
+                        return True
+            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                pass
+                
+        return False
 
-    def _evaluate_time(self, condition: models.Condition) -> bool:
-        """Evaluate a time-based condition"""
-        now = datetime.now().time()
+    def _evaluate_time_condition(self, parameters: Dict[str, Any], context: Dict[str, Any]) -> bool:
+        """
+        Evaluate a time-based condition.
         
-        start_time_str = condition.parameters.get("start_time")
-        end_time_str = condition.parameters.get("end_time")
+        Args:
+            parameters: Condition parameters
+            context: Evaluation context
+            
+        Returns:
+            Whether the condition is met
+        """
+        current_time = context.get('current_time', datetime.now()).time()
         
-        if not start_time_str:
-            logger.warning("Missing start_time parameter for time condition")
+        start_time_str = parameters.get('start_time')
+        end_time_str = parameters.get('end_time')
+        operation = parameters.get('operation', 'between')  # between, before, after, at
+        
+        # Handle 'at' operation (specific time)
+        if operation == 'at':
+            if not start_time_str:
+                return False
+                
+            try:
+                target_time = datetime.strptime(start_time_str, '%H:%M').time()
+                # Allow a small window (1 minute) for 'at' comparison
+                target_minutes = target_time.hour * 60 + target_time.minute
+                current_minutes = current_time.hour * 60 + current_time.minute
+                return abs(target_minutes - current_minutes) <= 1
+            except ValueError:
+                self.logger.error(f"Invalid time format: {start_time_str}")
+                return False
+        
+        # Handle 'before' operation
+        if operation == 'before':
+            if not start_time_str:
+                return False
+                
+            try:
+                target_time = datetime.strptime(start_time_str, '%H:%M').time()
+                return current_time < target_time
+            except ValueError:
+                self.logger.error(f"Invalid time format: {start_time_str}")
+                return False
+        
+        # Handle 'after' operation
+        if operation == 'after':
+            if not start_time_str:
+                return False
+                
+            try:
+                target_time = datetime.strptime(start_time_str, '%H:%M').time()
+                return current_time > target_time
+            except ValueError:
+                self.logger.error(f"Invalid time format: {start_time_str}")
+                return False
+        
+        # Handle 'between' operation (default)
+        if not start_time_str or not end_time_str:
+            self.logger.warning("Time condition missing start or end time")
             return False
             
         try:
-            # Parse times
-            start_time = datetime.strptime(start_time_str, "%H:%M").time()
+            start_time = datetime.strptime(start_time_str, '%H:%M').time()
+            end_time = datetime.strptime(end_time_str, '%H:%M').time()
             
-            # If end_time is provided, check if current time is between start and end
-            if end_time_str:
-                end_time = datetime.strptime(end_time_str, "%H:%M").time()
-                
-                # Handle overnight ranges (e.g., 22:00 to 06:00)
-                if start_time > end_time:
-                    return now >= start_time or now <= end_time
-                else:
-                    return start_time <= now <= end_time
+            # Handle overnight ranges (e.g., 22:00 to 06:00)
+            if start_time > end_time:
+                return current_time >= start_time or current_time <= end_time
             else:
-                # Just check if current time matches start_time (within the minute)
-                return now.hour == start_time.hour and now.minute == start_time.minute
-                
+                return start_time <= current_time <= end_time
         except ValueError as e:
-            logger.error(f"Error parsing time values: {str(e)}")
+            self.logger.error(f"Error parsing time values: {e}")
             return False
 
-    def _evaluate_day_of_week(self, condition: models.Condition) -> bool:
-        """Evaluate a day-of-week condition"""
-        days = condition.parameters.get("days", [])
+    def _evaluate_day_of_week_condition(self, parameters: Dict[str, Any], context: Dict[str, Any]) -> bool:
+        """
+        Evaluate a day-of-week condition.
+        
+        Args:
+            parameters: Condition parameters
+            context: Evaluation context
+            
+        Returns:
+            Whether the condition is met
+        """
+        current_date = context.get('current_time', datetime.now())
+        current_day = current_date.strftime('%A').lower()  # Monday, Tuesday, etc.
+        current_day_num = current_date.weekday()  # 0=Monday, 6=Sunday
+        
+        days = parameters.get('days', [])
         if not days:
             return False
             
-        today = datetime.now().strftime("%A").lower()
-        days = [day.lower() for day in days]
+        # Convert to lowercase for case-insensitive comparison
+        days = [day.lower() if isinstance(day, str) else day for day in days]
         
-        return today in days
-
-    def _evaluate_numeric(self, condition: models.Condition) -> bool:
-        """Evaluate a numeric comparison condition"""
-        value = condition.parameters.get("value")
-        compare_to = condition.parameters.get("compare_to")
-        operator_name = condition.parameters.get("operator", "eq")
-        
-        if value is None or compare_to is None:
-            return False
-            
-        try:
-            value = float(value)
-            compare_to = float(compare_to)
-            operator_func = self.operators.get(operator_name, operator.eq)
-            
-            return operator_func(value, compare_to)
-        except (ValueError, TypeError) as e:
-            logger.error(f"Error comparing numeric values: {str(e)}")
-            return False
-
-    def _evaluate_string(self, condition: models.Condition) -> bool:
-        """Evaluate a string comparison condition"""
-        value = condition.parameters.get("value", "")
-        compare_to = condition.parameters.get("compare_to", "")
-        operator_name = condition.parameters.get("operator", "eq")
-        
-        if value is None or compare_to is None:
-            return False
-            
-        operator_func = self.operators.get(operator_name, operator.eq)
-        
-        # Convert to strings to ensure we can compare
-        value = str(value)
-        compare_to = str(compare_to)
-        
-        return operator_func(value, compare_to)
-
-    async def _evaluate_variable(self, condition: models.Condition, db_session) -> bool:
-        """Evaluate a condition based on a stored variable"""
-        from ...db import crud
-        
-        variable_name = condition.parameters.get("variable_name")
-        expected_value = condition.parameters.get("value")
-        operator_name = condition.parameters.get("operator", "eq")
-        
-        if not variable_name or expected_value is None:
-            return False
-            
-        try:
-            # Get variable from database
-            variable = await crud.get_variable_by_name(db_session, variable_name)
-            
-            if not variable:
-                logger.warning(f"Variable not found: {variable_name}")
-                return False
+        # Support both string days and numeric days
+        for day in days:
+            if isinstance(day, str) and day.lower() == current_day:
+                return True
+            elif isinstance(day, int) and day == current_day_num:
+                return True
                 
-            current_value = variable.value
-            operator_func = self.operators.get(operator_name, operator.eq)
+        return False
+
+    def _evaluate_idle_condition(self, parameters: Dict[str, Any], context: Dict[str, Any]) -> bool:
+        """
+        Evaluate an idle/inactivity condition.
+        
+        Args:
+            parameters: Condition parameters
+            context: Evaluation context
             
-            # Try to parse JSON if variable value looks like JSON
-            if isinstance(current_value, str) and current_value.strip().startswith(("{", "[")):
-                try:
-                    current_value = json.loads(current_value)
-                except json.JSONDecodeError:
-                    pass
-                    
-            # Convert values if needed
-            if isinstance(expected_value, str) and expected_value.lower() in ["true", "false"]:
-                expected_value = expected_value.lower() == "true"
-                
-            if isinstance(current_value, str) and current_value.lower() in ["true", "false"]:
-                current_value = current_value.lower() == "true"
-                
-            # Numeric comparison
-            if isinstance(expected_value, (int, float)) or (isinstance(expected_value, str) and expected_value.replace(".", "", 1).isdigit()):
-                try:
-                    current_value = float(current_value)
-                    expected_value = float(expected_value)
-                except (ValueError, TypeError):
-                    pass
-                    
-            return operator_func(current_value, expected_value)
-            
-        except Exception as e:
-            logger.error(f"Error evaluating variable condition: {str(e)}")
+        Returns:
+            Whether the condition is met
+        """
+        # Get idle threshold in minutes
+        threshold_minutes = parameters.get('threshold_minutes', 5)
+        
+        # In a real implementation, you would get the actual system idle time
+        # For now, we'll use a placeholder based on the last_activity value in context
+        last_activity = context.get('last_activity')
+        
+        if not last_activity:
             return False
+            
+        current_time = context.get('current_time', datetime.now())
+        idle_time = (current_time - last_activity).total_seconds() / 60
+        
+        return idle_time >= threshold_minutes
+
+    def _evaluate_resource_condition(self, parameters: Dict[str, Any], context: Dict[str, Any]) -> bool:
+        """
+        Evaluate a system resource condition (CPU, memory, etc.)
+        
+        Args:
+            parameters: Condition parameters
+            context: Evaluation context
+            
+        Returns:
+            Whether the condition is met
+        """
+        resource_type = parameters.get('type', 'cpu')  # cpu, memory, disk
+        threshold = parameters.get('threshold', 80)  # percentage
+        operator_name = parameters.get('operator', 'gt')  # gt, lt, gte, lte, eq
+        
+        # Get appropriate comparison operator
+        compare_op = self._operators.get(operator_name, operator.gt)
+        
+        # Get current resource usage
+        if resource_type == 'cpu':
+            current_value = psutil.cpu_percent()
+        elif resource_type == 'memory':
+            current_value = psutil.virtual_memory().percent
+        elif resource_type == 'disk':
+            # Use root disk by default, could be parameterized
+            current_value = psutil.disk_usage('/').percent
+        else:
+            self.logger.warning(f"Unknown resource type: {resource_type}")
+            return False
+            
+        return compare_op(current_value, threshold)
+
+    def _evaluate_custom_condition(self, parameters: Dict[str, Any], context: Dict[str, Any]) -> bool:
+        """
+        Evaluate a custom condition using provided parameters.
+        Useful for special-case conditions that don't fit other categories.
+        
+        Args:
+            parameters: Condition parameters
+            context: Evaluation context
+            
+        Returns:
+            Whether the condition is met
+        """
+        # This is a placeholder for custom condition logic
+        # In a real implementation, this would interpret the parameters
+        # and evaluate based on them.
+        condition_id = parameters.get('id')
+        self.logger.info(f"Evaluating custom condition: {condition_id}")
+        
+        # Default to True for custom conditions without specific implementation
+        return parameters.get('default_result', True)
