@@ -24,7 +24,9 @@ root.render(
     <Provider store={store}>
       <PersistGate loading={null} persistor={persistor}>
         <ThemeProvider theme={theme}>
-          <Router>
+          <Router
+            future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+          >
             <App />
           </Router>
         </ThemeProvider>

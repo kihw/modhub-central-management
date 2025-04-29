@@ -1,10 +1,5 @@
 import React from "react";
-import {
-  BrowserRouter as Router,
-  Routes,
-  Route,
-  Navigate,
-} from "react-router-dom";
+
 import { Provider } from "react-redux";
 import { PersistGate } from "redux-persist/integration/react";
 import { store, persistor } from "./redux/store";
@@ -46,9 +41,9 @@ const AppContent = () => {
     return (
       <div className="flex h-screen w-screen items-center justify-center bg-gray-900 p-4">
         <div className="max-w-2xl w-full">
-          <ConnectionError 
-            message="Impossible de se connecter au service backend" 
-            details="Le serveur backend n'est pas accessible. Veuillez vérifier que le script 'run.py' est en cours d'exécution." 
+          <ConnectionError
+            message="Impossible de se connecter au service backend"
+            details="Le serveur backend n'est pas accessible. Veuillez vérifier que le script 'run.py' est en cours d'exécution."
             onRetry={reconnect}
             error={error}
           />
@@ -78,28 +73,26 @@ const AppContent = () => {
 
 const App = () => {
   return (
-    <Router>
-      <Provider store={store}>
-        <PersistGate loading={null} persistor={persistor}>
-          <ErrorBoundary>
-            <BackendProvider>
-              <AppContent />
-              <ToastContainer
-                position="bottom-right"
-                autoClose={5000}
-                hideProgressBar={false}
-                newestOnTop
-                closeOnClick
-                rtl={false}
-                pauseOnFocusLoss
-                draggable
-                pauseOnHover
-              />
-            </BackendProvider>
-          </ErrorBoundary>
-        </PersistGate>
-      </Provider>
-    </Router>
+    <Provider store={store}>
+      <PersistGate loading={null} persistor={persistor}>
+        <ErrorBoundary>
+          <BackendProvider>
+            <AppContent />
+            <ToastContainer
+              position="bottom-right"
+              autoClose={5000}
+              hideProgressBar={false}
+              newestOnTop
+              closeOnClick
+              rtl={false}
+              pauseOnFocusLoss
+              draggable
+              pauseOnHover
+            />
+          </BackendProvider>
+        </ErrorBoundary>
+      </PersistGate>
+    </Provider>
   );
 };
 

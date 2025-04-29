@@ -9,10 +9,12 @@ import threading
 import datetime
 from typing import List, Dict, Any, Callable, Optional, Set, Tuple
 
-# Modifier les importations relatives pour des importations absolues
-from backend.core.automation import conditions
-from backend.core.automation import actions
-from backend.core.mods.mod_manager import ModManager
+# Importer localement depuis le même package
+from . import conditions
+from . import actions
+
+# Importer de façon relative, mais avec le bon niveau
+from ..mods.mod_manager import ModManager
 
 # Utilisons des classes fictives pour éviter les importations problématiques
 # au lieu de: from ...db.models import AutomationRule, Condition, Action

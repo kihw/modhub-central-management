@@ -3,9 +3,9 @@ from sqlalchemy.orm import Session
 from typing import List
 
 # Utiliser des importations absolues au lieu de relatives
-from backend.db.database import get_db
+from db.database import get_db
 # Importer les classes fictives pour éviter les dépendances circulaires
-from backend.core.automation.engine import AutomationEngine, AutomationRule
+from core.automation.engine import AutomationEngine, AutomationRule
 
 # Simuler les schémas nécessaires
 class RuleCreate:
