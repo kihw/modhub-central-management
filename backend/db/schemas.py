@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field, validator
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Union
 from datetime import datetime
 from enum import Enum
 
@@ -62,6 +62,9 @@ class ModResponse(ModBase):
     class Config:
         orm_mode = True
 
+class ModToggle(BaseModel):
+    enabled: bool = Field(..., description="New active state of the mod")
+
 class ConditionBase(BaseModel):
     condition_type: str = Field(
         ..., 
@@ -73,7 +76,6 @@ class ConditionBase(BaseModel):
     )
     logic_operator: str = Field(
         default="AND", 
-        pattern="^(AND|OR)$", 
         description="Logical operator for combining conditions"
     )
 
@@ -82,6 +84,13 @@ class ConditionBase(BaseModel):
         valid_types = ['process', 'time', 'system_state', 'custom']
         if v.lower() not in valid_types:
             raise ValueError(f'Invalid condition type. Must be one of {valid_types}')
+        return v
+
+    @validator('logic_operator')
+    def validate_logic_operator(cls, v):
+        valid_operators = ['AND', 'OR']
+        if v not in valid_operators:
+            raise ValueError(f'Invalid logic operator. Must be one of {valid_operators}')
         return v
 
 class ActionBase(BaseModel):
@@ -96,7 +105,7 @@ class ActionBase(BaseModel):
 
     @validator('action_type')
     def validate_action_type(cls, v):
-        valid_types = ['mod_activation', 'system_command', 'notification', 'custom']
+        valid_types = ['mod_activation', 'mod_deactivation', 'system_command', 'notification', 'custom']
         if v.lower() not in valid_types:
             raise ValueError(f'Invalid action type. Must be one of {valid_types}')
         return v
@@ -130,11 +139,19 @@ class RuleResponse(RuleBase):
     class Config:
         orm_mode = True
 
+class LogLevel(str, Enum):
+    DEBUG = "debug"
+    INFO = "info"
+    WARNING = "warning"
+    ERROR = "error"
+    CRITICAL = "critical"
+
 class LogCreate(BaseModel):
-    level: str
+    level: LogLevel = LogLevel.INFO
     message: str
     source: Optional[str] = None
     timestamp: Optional[datetime] = None
+    details: Optional[Dict[str, Any]] = None
 
 class LogResponse(LogCreate):
     id: int
@@ -149,7 +166,20 @@ class SettingsUpdate(BaseModel):
     performance: Optional[Dict[str, Any]] = None
     ui: Optional[Dict[str, Any]] = None
 
-class ModToggle(BaseModel):
-    is_active: bool
-    mod_id: int = Field(..., description="ID of the mod to toggle")
-    
+class SystemInfoResponse(BaseModel):
+    cpu_count: int
+    total_memory: int
+    total_disk: int
+    version: str = "0.1.0"
+
+class ProcessResponse(BaseModel):
+    pid: int
+    name: str
+    memory_percent: Optional[float] = None
+    cpu_percent: Optional[float] = None
+    status: Optional[str] = None
+
+class ResourceUsageResponse(BaseModel):
+    cpu_percent: float
+    memory_percent: float
+    disk_percent: float
