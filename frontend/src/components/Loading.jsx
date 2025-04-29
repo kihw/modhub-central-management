@@ -1,5 +1,4 @@
 import React, { useEffect, useState } from 'react';
-import { motion } from 'framer-motion';
 
 const Loading = ({ text = 'Chargement en cours', fullScreen = false }) => {
   const [dots, setDots] = useState('');
@@ -20,12 +19,8 @@ const Loading = ({ text = 'Chargement en cours', fullScreen = false }) => {
     : 'flex flex-col items-center justify-center p-6';
 
   return (
-    <motion.div
+    <div
       className={containerClasses}
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      transition={{ duration: 0.3 }}
     >
       <div className="flex flex-col items-center">
         <svg 
@@ -50,17 +45,13 @@ const Loading = ({ text = 'Chargement en cours', fullScreen = false }) => {
             </g>
           </g>
         </svg>
-        <motion.div
+        <div
           className="text-lg text-indigo-100 font-medium"
-          key={dots}
-          initial={{ opacity: 0.8 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 0.2 }}
         >
           {text}{dots}
-        </motion.div>
+        </div>
       </div>
-    </motion.div>
+    </div>
   );
 };
 
