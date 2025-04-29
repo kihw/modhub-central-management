@@ -13,7 +13,7 @@ import "react-toastify/dist/ReactToastify.css";
 import "./styles/App.css";
 
 // Context providers
-import { BackendProvider } from "./context/BackendContext";
+import { BackendProvider, useBackend } from "./context/BackendContext";
 
 // Layout components
 import MainLayout from "./components/layouts/MainLayout";
@@ -28,25 +28,31 @@ import ModDetail from "./pages/ModDetail";
 import ActivityMonitor from "./pages/ActivityMonitor";
 import ErrorBoundary from "./components/ErrorBoundary";
 import ConnectionError from "./components/ConnectionError";
-import { useBackend } from "./context/BackendContext";
+import Loading from "./components/Loading";
 
 // App content with connection check
-
 const AppContent = () => {
   const { isConnected, isChecking, error, reconnect } = useBackend();
 
   if (isChecking) {
     return (
       <div className="flex h-screen w-screen items-center justify-center bg-gray-900">
-        {/* loading spinner */}
+        <Loading text="Connexion au serveur backend..." fullScreen={true} />
       </div>
     );
   }
 
   if (!isConnected) {
     return (
-      <div className="flex h-screen w-screen items-center justify-center bg-gray-900">
-        {/* backend not connected screen */}
+      <div className="flex h-screen w-screen items-center justify-center bg-gray-900 p-4">
+        <div className="max-w-2xl w-full">
+          <ConnectionError 
+            message="Impossible de se connecter au service backend" 
+            details="Le serveur backend n'est pas accessible. Veuillez vérifier que le script 'run.py' est en cours d'exécution." 
+            onRetry={reconnect}
+            error={error}
+          />
+        </div>
       </div>
     );
   }
@@ -72,15 +78,28 @@ const AppContent = () => {
 
 const App = () => {
   return (
-    <Provider store={store}>
-      <PersistGate loading={null} persistor={persistor}>
-        <ErrorBoundary>
-          <BackendProvider>
-            <AppContent />
-          </BackendProvider>
-        </ErrorBoundary>
-      </PersistGate>
-    </Provider>
+    <Router>
+      <Provider store={store}>
+        <PersistGate loading={null} persistor={persistor}>
+          <ErrorBoundary>
+            <BackendProvider>
+              <AppContent />
+              <ToastContainer
+                position="bottom-right"
+                autoClose={5000}
+                hideProgressBar={false}
+                newestOnTop
+                closeOnClick
+                rtl={false}
+                pauseOnFocusLoss
+                draggable
+                pauseOnHover
+              />
+            </BackendProvider>
+          </ErrorBoundary>
+        </PersistGate>
+      </Provider>
+    </Router>
   );
 };
 
