@@ -1,35 +1,57 @@
-# backend/db/database.py
+"""
+Database configuration and session management for ModHub Central.
+This module sets up the database connection, ORM, and session handling.
+"""
+
+import os
+import logging
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
-import os
 from pathlib import Path
 
-# Déterminer le chemin de la base de données
-BASE_DIR = Path(__file__).resolve().parent.parent.parent
-DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{BASE_DIR}/data/database.sqlite")
+from core.config import settings
 
-# Créer le répertoire de données s'il n'existe pas
-data_dir = BASE_DIR / "data"
-data_dir.mkdir(exist_ok=True)
+logger = logging.getLogger(__name__)
 
-# Créer l'engine SQLAlchemy
-engine = create_engine(
-    DATABASE_URL, 
-    connect_args={"check_same_thread": False}  # Nécessaire pour SQLite
-)
+# Get database URL from settings
+DATABASE_URL = settings.get_database_url()
 
-# Créer une classe de session
+# Ensure data directory exists
+data_dir = Path(settings.DATA_DIR)
+data_dir.mkdir(exist_ok=True, parents=True)
+
+logger.info(f"Using database: {DATABASE_URL}")
+
+# Create SQLAlchemy engine with appropriate options
+if settings.DB_TYPE == "sqlite":
+    engine = create_engine(
+        DATABASE_URL, 
+        connect_args={"check_same_thread": False},  # Required for SQLite
+        echo=settings.DEBUG
+    )
+else:
+    engine = create_engine(
+        DATABASE_URL,
+        echo=settings.DEBUG,
+        pool_pre_ping=True,  # Test connections before using them
+        pool_recycle=3600,   # Reconnect after 1 hour of idle
+    )
+
+# Create session factory
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-# Base pour les modèles declaratifs
+# Create base class for models
 Base = declarative_base()
 
-# Fonction pour obtenir une instance de DB
+# Function to get database session
 def get_db():
     """
-    Fournit une session de base de données et assure sa fermeture après utilisation.
-    À utiliser comme dépendance dans les routes FastAPI.
+    Provide a database session and ensure its closure.
+    Usage as a FastAPI dependency in routes.
+    
+    Yields:
+        SQLAlchemy session
     """
     db = SessionLocal()
     try:
@@ -37,11 +59,15 @@ def get_db():
     finally:
         db.close()
 
-# Fonction pour initialiser les tables dans la base de données
+# Initialize database schema
 def init_db():
     """
-    Initialise le schéma de la base de données.
-    À appeler une fois lors du démarrage de l'application.
+    Initialize database schema.
+    Call this once during application startup.
     """
-    from . import models  # Import ici pour éviter les importations circulaires
+    from . import models  # Import here to avoid circular imports
+    
+    logger.info("Creating database tables if they don't exist")
     Base.metadata.create_all(bind=engine)
+    
+    logger.info("Database initialized")
