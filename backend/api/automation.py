@@ -1,83 +1,11 @@
 from fastapi import APIRouter, HTTPException, Depends, status
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Dict, Any, Optional
 
-# Utiliser des importations absolues au lieu de relatives
 from db.database import get_db
-# Importer les classes fictives pour éviter les dépendances circulaires
-from core.automation.engine import AutomationEngine, AutomationRule
-
-# Simuler les schémas nécessaires
-class RuleCreate:
-    def __init__(self, **kwargs):
-        self.name = kwargs.get("name", "")
-        self.description = kwargs.get("description", "")
-        self.priority = kwargs.get("priority", 5)
-        self.enabled = kwargs.get("enabled", True)
-        self.conditions = kwargs.get("conditions", [])
-        self.actions = kwargs.get("actions", [])
-
-class RuleUpdate:
-    def __init__(self, **kwargs):
-        self.name = kwargs.get("name")
-        self.description = kwargs.get("description")
-        self.priority = kwargs.get("priority")
-        self.enabled = kwargs.get("enabled")
-        self.conditions = kwargs.get("conditions")
-        self.actions = kwargs.get("actions")
-
-class RuleResponse:
-    def __init__(self, rule):
-        self.id = rule.id
-        self.name = rule.name
-        self.description = rule.description
-        self.priority = rule.priority
-        self.enabled = getattr(rule, "is_active", False)
-        self.conditions = rule.conditions
-        self.actions = rule.actions
-
-# Simuler les fonctions CRUD au lieu d'importer depuis db.crud
-def get_rules(db, skip=0, limit=100, active=None):
-    return []
-
-def get_rule(db, rule_id):
-    return None
-
-def create_rule(db, rule):
-    return AutomationRule(
-        id=1,
-        name=rule.name,
-        description=rule.description,
-        priority=rule.priority,
-        is_active=rule.enabled,
-        conditions=[],
-        actions=[]
-    )
-
-def update_rule(db, rule_id, rule):
-    return AutomationRule(
-        id=rule_id,
-        name=rule.name if rule.name is not None else "Updated Rule",
-        description=rule.description if rule.description is not None else "",
-        priority=rule.priority if rule.priority is not None else 5,
-        is_active=rule.enabled if rule.enabled is not None else True,
-        conditions=rule.conditions if rule.conditions is not None else [],
-        actions=rule.actions if rule.actions is not None else []
-    )
-
-def delete_rule(db, rule_id):
-    pass
-
-def toggle_rule(db, rule_id):
-    return AutomationRule(
-        id=rule_id,
-        name="Toggled Rule",
-        description="",
-        priority=5,
-        is_active=True,
-        conditions=[],
-        actions=[]
-    )
+from core.automation.engine import AutomationEngine
+from db.models import AutomationRule
+from db.schemas import RuleCreate, RuleUpdate, RuleResponse
 
 router = APIRouter(
     prefix="/automation",
@@ -86,23 +14,26 @@ router = APIRouter(
 
 automation_engine = AutomationEngine()
 
-@router.get("/", response_model=List[dict])
-async def read_rules(skip: int = 0, limit: int = 100, active: bool = None, db: Session = Depends(get_db)):
+@router.get("/", response_model=List[Dict[str, Any]])
+async def read_rules(skip: int = 0, limit: int = 100, active: Optional[bool] = None, db: Session = Depends(get_db)):
     """Get all automation rules with optional filtering for active status"""
+    from db.crud import get_rules
     rules = get_rules(db, skip=skip, limit=limit, active=active)
     return [vars(RuleResponse(rule)) for rule in rules]
 
-@router.get("/{rule_id}", response_model=dict)
+@router.get("/{rule_id}", response_model=Dict[str, Any])
 async def read_rule(rule_id: int, db: Session = Depends(get_db)):
     """Get a specific automation rule by ID"""
+    from db.crud import get_rule
     db_rule = get_rule(db, rule_id=rule_id)
     if db_rule is None:
         raise HTTPException(status_code=404, detail="Automation rule not found")
     return vars(RuleResponse(db_rule))
 
-@router.post("/", response_model=dict, status_code=status.HTTP_201_CREATED)
-async def create_new_rule(rule_data: dict, db: Session = Depends(get_db)):
+@router.post("/", response_model=Dict[str, Any], status_code=status.HTTP_201_CREATED)
+async def create_new_rule(rule_data: Dict[str, Any], db: Session = Depends(get_db)):
     """Create a new automation rule"""
+    from db.crud import create_rule
     rule = RuleCreate(**rule_data)
     created_rule = create_rule(db=db, rule=rule)
     
@@ -112,9 +43,10 @@ async def create_new_rule(rule_data: dict, db: Session = Depends(get_db)):
         
     return vars(RuleResponse(created_rule))
 
-@router.put("/{rule_id}", response_model=dict)
-async def update_existing_rule(rule_id: int, rule_data: dict, db: Session = Depends(get_db)):
+@router.put("/{rule_id}", response_model=Dict[str, Any])
+async def update_existing_rule(rule_id: int, rule_data: Dict[str, Any], db: Session = Depends(get_db)):
     """Update an existing automation rule"""
+    from db.crud import get_rule, update_rule
     db_rule = get_rule(db, rule_id=rule_id)
     if db_rule is None:
         raise HTTPException(status_code=404, detail="Automation rule not found")
@@ -133,6 +65,7 @@ async def update_existing_rule(rule_id: int, rule_data: dict, db: Session = Depe
 @router.delete("/{rule_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_existing_rule(rule_id: int, db: Session = Depends(get_db)):
     """Delete an automation rule"""
+    from db.crud import get_rule, delete_rule
     db_rule = get_rule(db, rule_id=rule_id)
     if db_rule is None:
         raise HTTPException(status_code=404, detail="Automation rule not found")
@@ -144,9 +77,10 @@ async def delete_existing_rule(rule_id: int, db: Session = Depends(get_db)):
     delete_rule(db=db, rule_id=rule_id)
     return {"detail": "Automation rule deleted successfully"}
 
-@router.post("/{rule_id}/toggle", response_model=dict)
+@router.post("/{rule_id}/toggle", response_model=Dict[str, Any])
 async def toggle_rule_status(rule_id: int, db: Session = Depends(get_db)):
     """Toggle an automation rule's active status"""
+    from db.crud import get_rule, toggle_rule
     db_rule = get_rule(db, rule_id=rule_id)
     if db_rule is None:
         raise HTTPException(status_code=404, detail="Automation rule not found")
