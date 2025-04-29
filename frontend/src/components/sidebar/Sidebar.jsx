@@ -11,7 +11,9 @@ import {
 import { NavLink } from "react-router-dom";
 import logo from "../../assets/modhub-logo.png";
 
-const Sidebar = ({ collapsed, setCollapsed }) => {
+const Sidebar = (props) => {
+  const { collapsed, setCollapsed = () => {} } = props;
+
   const [activeModCount, setActiveModCount] = useState(0);
 
   useEffect(() => {
@@ -22,7 +24,7 @@ const Sidebar = ({ collapsed, setCollapsed }) => {
           "http://localhost:8668/api/mods/active/count"
         );
         const data = await response.json();
-        setActiveModCount(data.count);
+        setActiveModCount(data.active_count);
       } catch (error) {
         console.error("Failed to fetch active mods count:", error);
       }
@@ -46,9 +48,9 @@ const Sidebar = ({ collapsed, setCollapsed }) => {
 
   return (
     <div
-      className={`bg-gray-900 text-white flex flex-col transition-all duration-300 ${
+      className={`bg-gray-900 text-white flex flex-col transition-all duration-500 ease-in-out ${
         collapsed ? "w-16" : "w-64"
-      } h-screen fixed left-0 top-0 z-10`}
+      } h-screen fixed left-0 top-0 z-10 shadow-lg`}
     >
       <div className="flex items-center justify-between p-4">
         {!collapsed && (

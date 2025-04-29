@@ -64,7 +64,7 @@ app = FastAPI(
 # Add CORS middleware with explicit origin configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:8000"],  # Frontend development server
+    allow_origins=["http://localhost:8000", "http://localhost:8668"],  # Frontend development server
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -110,6 +110,10 @@ async def startup_event():
     # Initialize database
     logger.info("Initializing database")
     init_db()
+
+    # ➡️ Force creation of missing tables
+    logger.info("Creating database tables if missing")
+    models.Base.metadata.create_all(bind=engine)
     
     # Initialize process monitor
     logger.info("Initializing process monitor")

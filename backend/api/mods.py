@@ -15,7 +15,7 @@ from core.mods.mod_manager import ModManager
 logger = logging.getLogger(__name__)
 
 router = APIRouter(
-    prefix="/mods",
+    prefix="",
     tags=["mods"],
 )
 
@@ -112,3 +112,9 @@ async def apply_mod(mod_id: int, db: Session = Depends(get_db)):
         )
     
     return db_mod
+
+@router.get("/active/count")
+async def get_active_mods_count(db: Session = Depends(get_db)):
+    """Get the count of active mods"""
+    active_mods = get_mods(db, active=True)
+    return {"active_count": len(active_mods)}
