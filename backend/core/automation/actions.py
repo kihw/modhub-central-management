@@ -1,153 +1,333 @@
 """
-Module defining automation actions that can be triggered by rules.
-These actions interact with the device control modules to execute commands.
+Action execution module for ModHub Central automation engine.
+Defines action types and execution logic.
 """
-from typing import Dict, Any, List, Optional
-import logging
-from datetime import datetime
 
-from core.device_control import device_registry
-from db.models import Rule, Device, ActionLog
+import logging
+from typing import Dict, Any, Optional, List, Callable, Union
+from datetime import datetime
+import json
+import subprocess
+import os
+import platform
 
 logger = logging.getLogger(__name__)
 
 class ActionRunner:
-    """Handles the execution of automation actions"""
-    
-    @staticmethod
-    async def execute_action(action_data: Dict[str, Any], rule_id: Optional[str] = None) -> bool:
+    """
+    Executes different types of actions for the automation engine.
+    """
+    def __init__(self):
+        # Register action handlers
+        self._action_handlers = {
+            'mod_activation': self._execute_mod_activation,
+            'mod_deactivation': self._execute_mod_deactivation,
+            'notification': self._execute_notification,
+            'system_command': self._execute_system_command,
+            'settings_change': self._execute_settings_change,
+            'custom': self._execute_custom_action,
+        }
+        
+        self.logger = logging.getLogger(__name__)
+        self.logger.info("ActionRunner initialized")
+
+    def execute_action(self, action_type: str, parameters: Dict[str, Any], context: Dict[str, Any] = None) -> bool:
         """
-        Execute an action based on the provided action data
+        Execute a single action.
         
         Args:
-            action_data: Dictionary containing action details
-            rule_id: Optional ID of the rule that triggered this action
+            action_type: Type of action to execute
+            parameters: Parameters for the action
+            context: Optional context data for execution
             
         Returns:
-            bool: Success status of the action execution
+            Whether the action was executed successfully
+            
+        Raises:
+            ValueError: If action type is unknown
         """
+        if context is None:
+            context = {}
+            
+        action_type = action_type.lower()
+        
+        # Get the appropriate handler
+        handler = self._action_handlers.get(action_type)
+        if not handler:
+            self.logger.warning(f"Unknown action type: {action_type}")
+            raise ValueError(f"Unknown action type: {action_type}")
+            
+        # Execute the action
         try:
-            action_type = action_data.get("type")
-            device_id = action_data.get("device_id")
-            parameters = action_data.get("parameters", {})
-            
-            if not action_type:
-                logger.error("Missing action type in action data")
-                return False
-                
-            # Log the action being executed
-            logger.info(f"Executing action: {action_type} for device: {device_id} with params: {parameters}")
-            
-            # Handle different action types
-            if action_type == "device_command":
-                return await ActionRunner._execute_device_command(device_id, parameters, rule_id)
-            elif action_type == "notification":
-                return await ActionRunner._send_notification(parameters, rule_id)
-            elif action_type == "scene_activation":
-                return await ActionRunner._activate_scene(parameters, rule_id)
-            else:
-                logger.error(f"Unknown action type: {action_type}")
-                return False
-                
+            result = handler(parameters, context)
+            return result
         except Exception as e:
-            logger.exception(f"Error executing action: {str(e)}")
+            self.logger.error(f"Error executing {action_type} action: {e}", exc_info=True)
             return False
+
+    def get_available_actions(self) -> List[str]:
+        """
+        Get a list of available action types.
+        
+        Returns:
+            List of action type names
+        """
+        return list(self._action_handlers.keys())
+        
+    def _execute_mod_activation(self, parameters: Dict[str, Any], context: Dict[str, Any]) -> bool:
+        """
+        Activate a mod.
+        
+        Args:
+            parameters: Action parameters
+            context: Execution context
+            
+        Returns:
+            Whether the action was executed successfully
+        """
+        mod_id = parameters.get('mod_id')
+        mod_type = parameters.get('mod_type')
+        config = parameters.get('config')
+        
+        if not mod_id and not mod_type:
+            self.logger.warning("Mod activation action missing mod_id or mod_type")
+            return False
+            
+        mod_manager = context.get('mod_manager')
+        if not mod_manager:
+            self.logger.warning("No mod manager available in context")
+            return False
+            
+        try:
+            # Use either mod_id or mod_type to activate
+            if mod_id:
+                success = mod_manager.activate_mod(mod_id, config)
+            else:
+                success = mod_manager.activate_mod(mod_type, config)
+                
+            if success:
+                self.logger.info(f"Successfully activated mod {mod_id or mod_type}")
+            else:
+                self.logger.warning(f"Failed to activate mod {mod_id or mod_type}")
+                
+            return success
+        except Exception as e:
+            self.logger.error(f"Error activating mod {mod_id or mod_type}: {e}", exc_info=True)
+            return False
+            
+    def _execute_mod_deactivation(self, parameters: Dict[str, Any], context: Dict[str, Any]) -> bool:
+        """
+        Deactivate a mod.
+        
+        Args:
+            parameters: Action parameters
+            context: Execution context
+            
+        Returns:
+            Whether the action was executed successfully
+        """
+        mod_id = parameters.get('mod_id')
+        mod_type = parameters.get('mod_type')
+        
+        if not mod_id and not mod_type:
+            self.logger.warning("Mod deactivation action missing mod_id or mod_type")
+            return False
+            
+        mod_manager = context.get('mod_manager')
+        if not mod_manager:
+            self.logger.warning("No mod manager available in context")
+            return False
+            
+        try:
+            # Use either mod_id or mod_type to deactivate
+            if mod_id:
+                success = mod_manager.deactivate_mod(mod_id)
+            else:
+                success = mod_manager.deactivate_mod(mod_type)
+                
+            if success:
+                self.logger.info(f"Successfully deactivated mod {mod_id or mod_type}")
+            else:
+                self.logger.warning(f"Failed to deactivate mod {mod_id or mod_type}")
+                
+            return success
+        except Exception as e:
+            self.logger.error(f"Error deactivating mod {mod_id or mod_type}: {e}", exc_info=True)
+            return False
+        
+    def _execute_notification(self, parameters: Dict[str, Any], context: Dict[str, Any]) -> bool:
+        """
+        Send a notification.
+        
+        Args:
+            parameters: Action parameters
+            context: Execution context
+            
+        Returns:
+            Whether the action was executed successfully
+        """
+        title = parameters.get('title', 'ModHub Central')
+        message = parameters.get('message', '')
+        level = parameters.get('level', 'info')  # info, warning, error
+        
+        if not message:
+            self.logger.warning("Notification action missing message")
+            return False
+            
+        # Log the notification (for history)
+        log_level = getattr(logging, level.upper(), logging.INFO)
+        self.logger.log(log_level, f"NOTIFICATION: {title} - {message}")
+        
+        # In a real implementation, this would use a notification system
+        # For now, we'll just log it
+        self.logger.info(f"Notification sent: {title} - {message}")
+        
+        # TODO: Implement actual notification delivery (system tray, toast, etc.)
+        
+        return True
     
-    @staticmethod
-    async def _execute_device_command(device_id: str, parameters: Dict[str, Any], rule_id: Optional[str]) -> bool:
-        """Execute a command on a specific device"""
-        if not device_id:
-            logger.error("Missing device_id for device_command action")
-            return False
+    def _execute_system_command(self, parameters: Dict[str, Any], context: Dict[str, Any]) -> bool:
+        """
+        Execute a system command.
+        
+        Args:
+            parameters: Action parameters
+            context: Execution context
             
-        device_controller = device_registry.get_controller(device_id)
-        if not device_controller:
-            logger.error(f"No controller found for device ID: {device_id}")
-            return False
-            
-        command = parameters.get("command")
+        Returns:
+            Whether the action was executed successfully
+        """
+        command = parameters.get('command')
+        shell = parameters.get('shell', True)
+        timeout = parameters.get('timeout', 30)  # seconds
+        
         if not command:
-            logger.error("Missing command in parameters")
+            self.logger.warning("System command action missing command")
             return False
             
-        command_params = parameters.get("command_parameters", {})
-        success = await device_controller.execute_command(command, command_params)
-        
-        # Log the action result
-        await ActionRunner._log_action(
-            action_type="device_command",
-            device_id=device_id,
-            parameters=parameters,
-            rule_id=rule_id,
-            success=success
-        )
-        
-        return success
-    
-    @staticmethod
-    async def _send_notification(parameters: Dict[str, Any], rule_id: Optional[str]) -> bool:
-        """Send a notification based on parameters"""
-        message = parameters.get("message", "")
-        channel = parameters.get("channel", "app")
-        priority = parameters.get("priority", "normal")
-        
-        # Implementation would depend on notification channels available
-        # For now, we just log it
-        logger.info(f"Notification ({channel}, {priority}): {message}")
-        
-        # Log the action
-        await ActionRunner._log_action(
-            action_type="notification",
-            parameters=parameters,
-            rule_id=rule_id,
-            success=True
-        )
-        
-        return True
-    
-    @staticmethod
-    async def _activate_scene(parameters: Dict[str, Any], rule_id: Optional[str]) -> bool:
-        """Activate a predefined scene (group of actions)"""
-        scene_id = parameters.get("scene_id")
-        if not scene_id:
-            logger.error("Missing scene_id for scene_activation action")
+        # Security check - prevent dangerous commands
+        if self._is_dangerous_command(command):
+            self.logger.warning(f"Blocked potentially dangerous command: {command}")
             return False
             
-        # Scene activation would involve looking up the scene and executing
-        # its defined actions - implementation would depend on how scenes are stored
-        logger.info(f"Activating scene: {scene_id}")
-        
-        # Log the action
-        await ActionRunner._log_action(
-            action_type="scene_activation",
-            parameters=parameters,
-            rule_id=rule_id,
-            success=True
-        )
-        
-        return True
+        try:
+            # Execute the command
+            self.logger.info(f"Executing system command: {command}")
+            process = subprocess.run(
+                command,
+                shell=shell,
+                timeout=timeout,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True
+            )
+            
+            if process.returncode == 0:
+                self.logger.info(f"Command executed successfully: {command}")
+                return True
+            else:
+                self.logger.warning(f"Command failed with code {process.returncode}: {command}")
+                self.logger.debug(f"Command stderr: {process.stderr}")
+                return False
+        except subprocess.TimeoutExpired:
+            self.logger.error(f"Command timed out after {timeout}s: {command}")
+            return False
+        except Exception as e:
+            self.logger.error(f"Error executing command: {e}", exc_info=True)
+            return False
     
-    @staticmethod
-    async def _log_action(
-        action_type: str,
-        parameters: Dict[str, Any],
-        success: bool,
-        rule_id: Optional[str] = None,
-        device_id: Optional[str] = None
-    ) -> None:
-        """Log an action to the database"""
-        # This would typically save to the database
-        # For now, just logging to console
-        timestamp = datetime.now().isoformat()
-        log_entry = {
-            "timestamp": timestamp,
-            "action_type": action_type,
-            "parameters": parameters,
-            "success": success,
-            "rule_id": rule_id,
-            "device_id": device_id
-        }
-        logger.debug(f"Action log: {log_entry}")
+    def _is_dangerous_command(self, command: str) -> bool:
+        """
+        Check if a command appears dangerous.
         
-        # Actual implementation would save to database
-        # await ActionLog.create(**log_entry)
+        Args:
+            command: Command to check
+            
+        Returns:
+            Whether the command appears dangerous
+        """
+        # Very basic security check - a real implementation would be more sophisticated
+        dangerous_patterns = [
+            'rm -rf', 'format', 'mkfs', 'dd if=', 
+            'shutdown', 'reboot', 'halt', 
+            '> /dev/', '> /etc/', '> /sys/'
+        ]
+        
+        command_lower = command.lower()
+        for pattern in dangerous_patterns:
+            if pattern.lower() in command_lower:
+                return True
+                
+        return False
+    
+    def _execute_settings_change(self, parameters: Dict[str, Any], context: Dict[str, Any]) -> bool:
+        """
+        Change a system or application setting.
+        
+        Args:
+            parameters: Action parameters
+            context: Execution context
+            
+        Returns:
+            Whether the action was executed successfully
+        """
+        setting_key = parameters.get('key')
+        setting_value = parameters.get('value')
+        setting_type = parameters.get('type', 'app')  # app, system
+        
+        if setting_key is None or setting_value is None:
+            self.logger.warning("Settings change action missing key or value")
+            return False
+            
+        # Handle application settings
+        if setting_type == 'app':
+            # Use database to store setting
+            db_session = context.get('db_session')
+            if db_session:
+                try:
+                    from ....db.crud import update_setting
+                    update_setting(db_session, setting_key, setting_value)
+                    self.logger.info(f"Updated app setting {setting_key} to {setting_value}")
+                    return True
+                except Exception as e:
+                    self.logger.error(f"Error updating app setting: {e}", exc_info=True)
+                    return False
+            else:
+                self.logger.warning("No database session available for settings change")
+                return False
+                
+        # Handle system settings
+        elif setting_type == 'system':
+            # This would integrate with OS-specific settings APIs
+            # For now, log that we would change it
+            self.logger.info(f"Would change system setting {setting_key} to {setting_value}")
+            
+            # TODO: Implement actual system settings changes
+            
+            # Just return successful for now
+            return True
+            
+        else:
+            self.logger.warning(f"Unknown settings type: {setting_type}")
+            return False
+    
+    def _execute_custom_action(self, parameters: Dict[str, Any], context: Dict[str, Any]) -> bool:
+        """
+        Execute a custom action using provided parameters.
+        Useful for special-case actions that don't fit other categories.
+        
+        Args:
+            parameters: Action parameters
+            context: Execution context
+            
+        Returns:
+            Whether the action was executed successfully
+        """
+        # This is a placeholder for custom action logic
+        # In a real implementation, this would interpret the parameters
+        # and execute based on them.
+        action_id = parameters.get('id')
+        self.logger.info(f"Executing custom action: {action_id}")
+        
+        # Default to True for custom actions without specific implementation
+        return parameters.get('default_result', True)
