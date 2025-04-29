@@ -47,28 +47,104 @@ ModHub Central est une application permettant de gérer de façon centralisée d
 ### Stockage
 - SQLite / JSON / YAML pour les configurations et règles
 
-## 🔧 Installation (À venir)
+## 🔧 Installation
 
+### Prérequis
+- Python 3.8 ou supérieur
+- Node.js 14 ou supérieur
+- npm 6 ou supérieur
+
+### Étapes d'installation
+
+1. **Cloner le dépôt :**
 ```bash
-# Cloner le dépôt
 git clone https://github.com/kihw/modhub-central-management.git
 cd modhub-central-management
+```
 
-# Installation des dépendances frontend
+2. **Lancer l'application avec le script automatisé :**
+```bash
+python run.py
+```
+
+Le script `run.py` va automatiquement :
+- Créer un environnement virtuel Python
+- Installer les dépendances backend et frontend
+- Démarrer le serveur backend (FastAPI)
+- Lancer l'interface frontend (Electron/React)
+
+### Installation manuelle (si nécessaire)
+
+Si vous préférez installer les composants séparément :
+
+1. **Configurer le backend :**
+```bash
+cd backend
+python -m venv venv
+source venv/bin/activate  # Sur Windows: venv\Scripts\activate
+pip install -r requirements.txt
+```
+
+2. **Configurer le frontend :**
+```bash
 cd frontend
 npm install
+```
 
-# Installation des dépendances backend
-cd ../backend
-pip install -r requirements.txt
+3. **Démarrer les services séparément :**
+```bash
+# Terminal 1 (Backend)
+cd backend
+source venv/bin/activate  # Sur Windows: venv\Scripts\activate
+python main.py
 
-# Lancement de l'application
+# Terminal 2 (Frontend)
+cd frontend
 npm start
 ```
+
+## 🔍 Dépannage
+
+### Problème de connexion au backend
+
+Si vous rencontrez des erreurs de connexion au backend (`ERR_CONNECTION_REFUSED`), vérifiez les points suivants :
+
+1. **Vérifier que le backend est bien démarré :**
+   - Le terminal exécutant le backend devrait afficher : "ModHub Central backend service started successfully"
+   - Le service devrait être accessible à l'adresse http://localhost:8668/
+   - Essayez d'accéder à http://localhost:8668/docs pour voir la documentation de l'API
+
+2. **Vérifier les ports :**
+   - Assurez-vous que le port 8668 n'est pas déjà utilisé par une autre application
+   - Si vous devez changer le port, modifiez-le dans les fichiers :
+     - `backend/main.py` (valeur du port)
+     - `frontend/src/context/BackendContext.jsx` (URL du backend)
+
+3. **Redémarrer complètement l'application :**
+   - Arrêtez tous les services en cours (Ctrl+C dans les terminaux)
+   - Réexécutez le script `run.py`
+
+### Problèmes de dépendances
+
+1. **Erreurs d'importation Python :**
+   - Vérifiez que toutes les dépendances sont installées : `pip install -r backend/requirements.txt`
+   - Assurez-vous que vous utilisez l'environnement virtuel correct
+
+2. **Erreurs NPM :**
+   - Essayez de nettoyer le cache npm : `npm cache clean --force`
+   - Supprimez le dossier node_modules et réinstallez : `rm -rf node_modules && npm install`
 
 ## 📝 Contribution
 
 Les contributions sont les bienvenues ! N'hésitez pas à ouvrir une issue ou soumettre une pull request.
+
+### Directives pour contribuer
+
+1. Fork le projet
+2. Créez une branche pour votre fonctionnalité (`git checkout -b feature/amazing-feature`)
+3. Committez vos changements (`git commit -m 'Add some amazing feature'`)
+4. Push vers la branche (`git push origin feature/amazing-feature`)
+5. Ouvrez une Pull Request
 
 ## 📜 Licence
 
