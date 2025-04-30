@@ -1,57 +1,47 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
+const DEFAULT_SETTINGS = {
+  autoStartWithSystem: false,
+  minimizeToTray: true,
+  showNotifications: true,
+  language: "en",
+  theme: "system",
+  autoSwitchMods: true,
+  modPriorityOrder: [],
+  conflictResolution: "priority",
+  scanInterval: 5000,
+  ignoredProcesses: [],
+  resourceMonitoring: true,
+  resourceWarningThresholds: {
+    cpu: 85,
+    memory: 80,
+    temperature: 80,
+  },
+  performanceMode: "balanced",
+  apiPort: 8668,
+  enableExternalAPI: false,
+  apiAuthRequired: true,
+  apiKey: "",
+  checkForUpdates: true,
+  autoInstallUpdates: false,
+  betaChannel: false,
+  debugMode: false,
+  logLevel: "info",
+};
+
 const useSettingsStore = create(
   persist(
     (set, get) => ({
-      // General settings
-      autoStartWithSystem: false,
-      minimizeToTray: true,
-      showNotifications: true,
-      language: "en",
-      theme: "system", // 'light', 'dark', 'system'
+      ...DEFAULT_SETTINGS,
 
-      // App behavior
-      autoSwitchMods: true,
-      modPriorityOrder: [], // ordered list of mod ids by priority
-      conflictResolution: "priority", // 'priority', 'last-activated', 'ask-user'
-
-      // Process scanning
-      scanInterval: 5000, // in milliseconds
-      ignoredProcesses: [], // list of process names to ignore
-
-      // Resources
-      resourceMonitoring: true,
-      resourceWarningThresholds: {
-        cpu: 85, // percentage
-        memory: 80, // percentage
-        temperature: 80, // celsius
-      },
-
-      // Performance
-      performanceMode: "balanced", // 'performance', 'balanced', 'power-saving'
-
-      // API settings
-      apiPort: 8668,
-      enableExternalAPI: false,
-      apiAuthRequired: true,
-      apiKey: "",
-
-      // Updates
-      checkForUpdates: true,
-      autoInstallUpdates: false,
-      betaChannel: false,
-
-      // Debug
-      debugMode: false,
-      logLevel: "info", // 'debug', 'info', 'warn', 'error'
-
-      // Helper functions
       updateSetting: (key, value) => {
+        if (!(key in DEFAULT_SETTINGS)) return;
         set({ [key]: value });
       },
 
       updateNestedSetting: (parentKey, childKey, value) => {
+        if (!(parentKey in DEFAULT_SETTINGS) || !DEFAULT_SETTINGS[parentKey]?.[childKey]) return;
         set((state) => ({
           [parentKey]: {
             ...state[parentKey],
@@ -60,76 +50,56 @@ const useSettingsStore = create(
         }));
       },
 
-      resetSettings: () => {
-        set({
-          autoStartWithSystem: false,
-          minimizeToTray: true,
-          showNotifications: true,
-          language: "en",
-          theme: "system",
-          autoSwitchMods: true,
-          modPriorityOrder: [],
-          conflictResolution: "priority",
-          scanInterval: 5000,
-          ignoredProcesses: [],
-          resourceMonitoring: true,
-          resourceWarningThresholds: {
-            cpu: 85,
-            memory: 80,
-            temperature: 80,
-          },
-          performanceMode: "balanced",
-          apiPort: 8668,
-          enableExternalAPI: false,
-          apiAuthRequired: true,
-          apiKey: "",
-          checkForUpdates: true,
-          autoInstallUpdates: false,
-          betaChannel: false,
-          debugMode: false,
-          logLevel: "info",
-        });
-      },
+      resetSettings: () => set(DEFAULT_SETTINGS),
 
       addIgnoredProcess: (processName) => {
+        const trimmedName = processName?.trim();
+        if (!trimmedName) return;
         set((state) => ({
-          ignoredProcesses: [...state.ignoredProcesses, processName],
+          ignoredProcesses: Array.from(new Set([...state.ignoredProcesses, trimmedName])),
         }));
       },
 
       removeIgnoredProcess: (processName) => {
+        const trimmedName = processName?.trim();
+        if (!trimmedName) return;
         set((state) => ({
-          ignoredProcesses: state.ignoredProcesses.filter(
-            (p) => p !== processName
-          ),
+          ignoredProcesses: state.ignoredProcesses.filter((p) => p !== trimmedName),
         }));
       },
 
       updateModPriority: (modIds) => {
-        set({ modPriorityOrder: modIds });
+        if (!Array.isArray(modIds)) return;
+        set({ modPriorityOrder: Array.from(new Set(modIds)) });
       },
 
       getEffectiveTheme: () => {
         const { theme } = get();
-        if (theme === "system") {
-          return window.matchMedia("(prefers-color-scheme: dark)").matches
-            ? "dark"
-            : "light";
-        }
-        return theme;
+        if (theme !== "system") return theme;
+        
+        const darkModeQuery = window?.matchMedia?.("(prefers-color-scheme: dark)");
+        return darkModeQuery?.matches ? "dark" : "light";
       },
 
       generateApiKey: () => {
-        const randomKey = [...Array(32)]
-          .map(() => Math.floor(Math.random() * 36).toString(36))
-          .join("");
-        set({ apiKey: randomKey });
-        return randomKey;
+        let newKey;
+        try {
+          newKey = crypto.randomUUID().replace(/-/g, "");
+        } catch {
+          newKey = Math.random().toString(36).slice(2) + Date.now().toString(36);
+        }
+        set({ apiKey: newKey });
+        return newKey;
       },
     }),
     {
       name: "modhub-settings",
       version: 1,
+      skipHydration: true,
+      partialize: (state) => 
+        Object.fromEntries(
+          Object.entries(state).filter(([key]) => key in DEFAULT_SETTINGS)
+        ),
     }
   )
 );

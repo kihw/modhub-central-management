@@ -1,80 +1,156 @@
-/* Styles de base pour l'application */
-.App {
-  text-align: center;
+:root {
+  --card-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  --card-shadow-hover: 0 4px 6px rgba(0, 0, 0, 0.1);
+  --border-color: #e2e8f0;
+  --bg-hover: #f7fafc;
+  --card-bg: #ffffff;
+  --text-color: #000000;
+  --sidebar-width: 250px;
+  --sidebar-width-mobile: 200px;
+  --transition-speed: 0.3s;
+  --header-height: 60px;
 }
 
-/* Styles pour le conteneur principal */
+.App {
+  text-align: center;
+  width: 100%;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
 .content-container {
   display: flex;
   flex-direction: column;
-  height: 100vh;
-  overflow-x: hidden;
+  flex: 1;
+  overflow: auto;
+  padding: 1rem;
+  margin-left: var(--sidebar-width);
 }
 
-/* Styles pour les layouts */
 .main-layout {
   display: flex;
-  height: 100vh;
-  width: 100vw;
+  flex: 1;
+  width: 100%;
   overflow: hidden;
+  position: relative;
 }
 
-/* Styles pour la sidebar */
-.sidebar-open {
-  margin-left: 0;
-  transition: margin-left 0.3s ease;
+.sidebar {
+  position: fixed;
+  left: 0;
+  top: var(--header-height);
+  height: calc(100vh - var(--header-height));
+  width: var(--sidebar-width);
+  z-index: 10;
+  background-color: var(--card-bg);
+  transform: translateX(0);
+  transition: transform var(--transition-speed) ease;
+  will-change: transform;
+  box-shadow: var(--card-shadow);
 }
 
 .sidebar-closed {
-  margin-left: -250px;
-  transition: margin-left 0.3s ease;
+  transform: translateX(calc(-1 * var(--sidebar-width)));
 }
 
-/* Styles pour les cartes */
 .card {
-  background-color: #ffffff;
+  background-color: var(--card-bg);
   border-radius: 0.5rem;
-  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+  box-shadow: var(--card-shadow);
   padding: 1.25rem;
   margin-bottom: 1rem;
+  transition: all var(--transition-speed) ease;
+  will-change: transform, box-shadow;
+  border: 1px solid var(--border-color);
 }
 
-/* Styles pour les tableaux */
+.card:hover {
+  box-shadow: var(--card-shadow-hover);
+  transform: translateY(-2px);
+}
+
 table {
   width: 100%;
-  border-collapse: collapse;
+  border-collapse: separate;
+  border-spacing: 0;
+  margin: 1rem 0;
+  border-radius: 0.5rem;
+  overflow: hidden;
 }
 
-th,
-td {
-  padding: 0.75rem;
+th, td {
+  padding: 1rem;
   text-align: left;
-  border-bottom: 1px solid #e2e8f0;
+  border-bottom: 1px solid var(--border-color);
 }
 
 th {
   font-weight: 600;
+  background-color: var(--bg-hover);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  backdrop-filter: blur(8px);
 }
 
-/* Styles pour le mode sombre */
+tr:last-child td {
+  border-bottom: none;
+}
+
+tr:hover {
+  background-color: var(--bg-hover);
+}
+
 .dark-mode {
+  --card-bg: #2d3748;
+  --text-color: #e2e8f0;
+  --border-color: #4a5568;
+  --bg-hover: #2d374880;
+  --card-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  --card-shadow-hover: 0 4px 6px rgba(0, 0, 0, 0.3);
   background-color: #1a202c;
-  color: #e2e8f0;
+  color: var(--text-color);
 }
 
-.dark-mode .card {
-  background-color: #2d3748;
-  color: #e2e8f0;
-}
-
-.dark-mode th,
-.dark-mode td {
-  border-bottom: 1px solid #4a5568;
-}
-
-/* Styles responsive */
 @media (max-width: 768px) {
+  :root {
+    --sidebar-width: var(--sidebar-width-mobile);
+  }
+
   .content-container {
-    padding: 1rem;
+    padding: 0.75rem;
+    margin-left: 0;
+  }
+
+  .sidebar {
+    box-shadow: var(--card-shadow-hover);
+  }
+
+  th, td {
+    padding: 0.75rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .card {
+    padding: 0.875rem;
+    margin-bottom: 0.75rem;
+  }
+
+  th, td {
+    padding: 0.5rem;
+    font-size: 0.875rem;
+  }
+
+  .content-container {
+    padding: 0.5rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    transition: none !important;
+    animation: none !important;
   }
 }

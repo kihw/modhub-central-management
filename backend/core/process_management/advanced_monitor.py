@@ -1,25 +1,18 @@
-"""
-Advanced Process Monitoring Module for ModHub Central
-
-This module provides enhanced process tracking and management capabilities,
-including resource usage tracking, process lifecycle monitoring, and
-intelligent filtering.
-"""
-
 import psutil
 import logging
-from typing import Dict, List, Optional, Callable
+from typing import Dict, List, Optional, Callable, Set
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime
+from queue import Queue
 import threading
 import time
 import re
+from weakref import WeakValueDictionary
 
 logger = logging.getLogger(__name__)
 
-@dataclass
+@dataclass(frozen=True)
 class ProcessInfo:
-    """Comprehensive process information tracking"""
     pid: int
     name: str
     exe_path: Optional[str] = None
@@ -31,178 +24,161 @@ class ProcessInfo:
     threads_count: int = 0
     status: str = 'running'
     parent_pid: Optional[int] = None
-    cmdline: List[str] = field(default_factory=list)
-    tags: List[str] = field(default_factory=list)
+    cmdline: tuple[str, ...] = field(default_factory=tuple)
+    tags: frozenset[str] = field(default_factory=frozenset)
     is_monitored: bool = False
     last_updated: datetime = field(default_factory=datetime.now)
 
 class AdvancedProcessMonitor:
-    """
-    Enhanced process monitoring with advanced tracking and management capabilities
-    """
+    PROCESS_CATEGORIES = (
+        {'pattern': r'steam\.exe|origin\.exe|epicgames\.exe|game|unity\.exe', 'tag': 'gaming'},
+        {'pattern': r'vlc\.exe|spotify\.exe|netflix\.exe|media|player|audio', 'tag': 'media'},
+        {'pattern': r'code\.exe|idea64\.exe|pycharm64\.exe|dev|studio|compiler', 'tag': 'development'}
+    )
+
     def __init__(
         self, 
-        scan_interval: int = 5, 
+        scan_interval: float = 5.0, 
         max_tracked_processes: int = 500,
         resource_threshold_cpu: float = 70.0,
         resource_threshold_memory: float = 80.0
     ):
-        self._tracked_processes: Dict[int, ProcessInfo] = {}
-        self._monitored_callbacks: Dict[str, Callable] = {}
-        self._scan_interval = scan_interval
-        self._max_tracked_processes = max_tracked_processes
+        self._tracked_processes = WeakValueDictionary()
+        self._monitored_callbacks: Dict[str, Set[Callable]] = {}
+        self._scan_interval = max(0.1, min(scan_interval, 60.0))
+        self._max_tracked_processes = max(10, min(max_tracked_processes, 1000))
         self._resource_thresholds = {
-            'cpu': resource_threshold_cpu,
-            'memory': resource_threshold_memory
+            'cpu': min(100.0, max(0.0, resource_threshold_cpu)),
+            'memory': min(100.0, max(0.0, resource_threshold_memory))
         }
         self._monitoring_thread: Optional[threading.Thread] = None
         self._stop_event = threading.Event()
-        
-        # Process categorization rules
-        self._categorization_rules = [
-            # Gaming applications
-            {'pattern': r'steam\.exe|origin\.exe|epicgames\.exe', 'tag': 'gaming'},
-            # Media applications
-            {'pattern': r'vlc\.exe|spotify\.exe|netflix\.exe', 'tag': 'media'},
-            # Development tools
-            {'pattern': r'code\.exe|idea64\.exe|pycharm64\.exe', 'tag': 'development'}
-        ]
+        self._event_queue: Queue = Queue(maxsize=1000)
+        self._process_patterns = {cat['tag']: re.compile(cat['pattern'], re.IGNORECASE) for cat in self.PROCESS_CATEGORIES}
 
-    def start_monitoring(self):
-        """Start continuous process monitoring"""
+    def start_monitoring(self) -> bool:
         if self._monitoring_thread and self._monitoring_thread.is_alive():
-            logger.warning("Process monitoring already running")
-            return
-
+            return False
+        
         self._stop_event.clear()
         self._monitoring_thread = threading.Thread(
-            target=self._monitoring_loop, 
-            daemon=True
+            target=self._monitoring_loop,
+            daemon=True,
+            name="ProcessMonitor"
         )
         self._monitoring_thread.start()
-        logger.info("Advanced process monitoring started")
+        return True
 
-    def stop_monitoring(self):
-        """Stop process monitoring"""
-        if self._monitoring_thread:
-            self._stop_event.set()
+    def stop_monitoring(self) -> bool:
+        if not self._monitoring_thread:
+            return False
+            
+        self._stop_event.set()
+        if self._monitoring_thread.is_alive():
             self._monitoring_thread.join(timeout=5)
-            logger.info("Process monitoring stopped")
+        self._tracked_processes.clear()
+        return True
 
-    def _monitoring_loop(self):
-        """Continuous monitoring loop"""
+    def _monitoring_loop(self) -> None:
         while not self._stop_event.is_set():
             try:
                 self._scan_processes()
+                self._process_events()
                 self._check_resource_thresholds()
                 time.sleep(self._scan_interval)
             except Exception as e:
-                logger.error(f"Error in monitoring loop: {e}")
-                time.sleep(self._scan_interval)
+                logger.error(f"Monitoring error: {e}", exc_info=True)
+                time.sleep(max(1.0, self._scan_interval / 2))
 
-    def _scan_processes(self):
-        """Scan and update current system processes"""
-        current_processes = {}
+    def _scan_processes(self) -> None:
+        current_processes = WeakValueDictionary()
         
         for proc in psutil.process_iter(['pid', 'name', 'exe', 'status', 'cmdline']):
+            if len(current_processes) >= self._max_tracked_processes:
+                break
+                
             try:
-                pid = proc.info['pid']
-                
-                # Apply categorization rules
-                tags = self._categorize_process(proc.info['name'])
-                
-                # Create or update process info
-                process_info = ProcessInfo(
-                    pid=pid,
-                    name=proc.info['name'],
-                    exe_path=proc.info.get('exe'),
-                    status=proc.info.get('status', 'unknown'),
-                    cmdline=proc.info.get('cmdline', []),
-                    tags=tags
-                )
-                
-                # Update dynamic metrics
-                try:
-                    with proc.oneshot():
-                        process_info.cpu_usage = proc.cpu_percent()
-                        process_info.memory_usage = proc.memory_percent()
-                        process_info.threads_count = proc.num_threads()
-                        
-                        # I/O counters if available
-                        try:
-                            io_counters = proc.io_counters()
-                            process_info.io_read_bytes = io_counters.read_bytes
-                            process_info.io_write_bytes = io_counters.write_bytes
-                        except Exception:
-                            pass
-                        
-                        # Parent process tracking
-                        try:
-                            parent = proc.parent()
-                            process_info.parent_pid = parent.pid if parent else None
-                        except Exception:
-                            pass
-                
-                except (psutil.NoSuchProcess, psutil.AccessDenied):
-                    continue
-                
-                current_processes[pid] = process_info
-            
+                process_info = self._create_process_info(proc)
+                if process_info:
+                    current_processes[process_info.pid] = process_info
             except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
                 continue
         
-        # Update tracked processes
         self._tracked_processes = current_processes
 
-    def _categorize_process(self, process_name: str) -> List[str]:
-        """Categorize processes based on predefined rules"""
-        tags = []
-        for rule in self._categorization_rules:
-            if re.search(rule['pattern'], process_name, re.IGNORECASE):
-                tags.append(rule['tag'])
-        return tags
+    def _create_process_info(self, proc: psutil.Process) -> Optional[ProcessInfo]:
+        try:
+            proc_info = proc.info
+            process_info = ProcessInfo(
+                pid=proc_info['pid'],
+                name=proc_info['name'],
+                exe_path=proc_info.get('exe'),
+                status=proc_info.get('status', 'unknown'),
+                cmdline=tuple(proc_info.get('cmdline', ())),
+                tags=frozenset(self._categorize_process(proc_info['name'])),
+                last_updated=datetime.now()
+            )
 
-    def _check_resource_thresholds(self):
-        """Check processes exceeding resource thresholds"""
+            with proc.oneshot():
+                process_info = ProcessInfo(
+                    **{**process_info.__dict__,
+                    'cpu_usage': proc.cpu_percent(),
+                    'memory_usage': proc.memory_percent(),
+                    'threads_count': proc.num_threads(),
+                    'io_read_bytes': proc.io_counters().read_bytes,
+                    'io_write_bytes': proc.io_counters().write_bytes,
+                    'parent_pid': proc.parent().pid if proc.parent() else None}
+                )
+
+            return process_info
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            return None
+
+    def _categorize_process(self, process_name: str) -> Set[str]:
+        return {tag for tag, pattern in self._process_patterns.items() if pattern.search(process_name)}
+
+    def _check_resource_thresholds(self) -> None:
         high_resource_processes = [
             process for process in self._tracked_processes.values()
             if (process.cpu_usage > self._resource_thresholds['cpu'] or
                 process.memory_usage > self._resource_thresholds['memory'])
         ]
         
-        if high_resource_processes:
-            self._trigger_high_resource_event(high_resource_processes)
+        if high_resource_processes and not self._event_queue.full():
+            self._event_queue.put(('high_resource', tuple(high_resource_processes)))
 
-    def _trigger_high_resource_event(self, processes: List[ProcessInfo]):
-        """Trigger events or callbacks for high-resource processes"""
+    def _process_events(self) -> None:
+        while not self._event_queue.empty():
+            event_type, data = self._event_queue.get_nowait()
+            if event_type == 'high_resource':
+                self._handle_high_resource_processes(data)
+            self._event_queue.task_done()
+
+    def _handle_high_resource_processes(self, processes: tuple[ProcessInfo, ...]) -> None:
         for process in processes:
-            logger.warning(
-                f"High resource usage detected: {process.name} "
-                f"(PID: {process.pid}, CPU: {process.cpu_usage}%, "
-                f"Memory: {process.memory_usage}%)"
-            )
-            # TODO: Implement more sophisticated handling
+            for callback_key, callbacks in self._monitored_callbacks.items():
+                pattern, tag = callback_key.split(':')
+                if (not pattern or re.search(pattern, process.name, re.IGNORECASE)) and \
+                   (not tag or tag in process.tags):
+                    for callback in callbacks:
+                        try:
+                            callback(process)
+                        except Exception as e:
+                            logger.error(f"Callback error for {process.name}: {e}", exc_info=True)
 
-    def get_processes_by_tag(self, tag: str) -> List[ProcessInfo]:
-        """Retrieve processes with a specific tag"""
-        return [
-            process for process in self._tracked_processes.values() 
-            if tag in process.tags
-        ]
+    def get_processes_by_tag(self, tag: str) -> tuple[ProcessInfo, ...]:
+        return tuple(proc for proc in self._tracked_processes.values() if tag in proc.tags)
 
     def register_process_callback(
         self, 
-        callback: Callable, 
-        process_name_pattern: Optional[str] = None,
-        tag: Optional[str] = None
-    ):
-        """
-        Register a callback for specific process events
-        
-        Args:
-            callback: Function to call on process event
-            process_name_pattern: Regex pattern to match process names
-            tag: Process tag to match
-        """
-        key = f"{process_name_pattern or ''}:{tag or ''}"
-        self._monitored_callbacks[key] = callback
+        callback: Callable[[ProcessInfo], None],
+        process_name_pattern: str = '',
+        tag: str = ''
+    ) -> bool:
+        if not callable(callback):
+            return False
+        key = f"{process_name_pattern}:{tag}"
+        if key not in self._monitored_callbacks:
+            self._monitored_callbacks[key] = set()
+        self._monitored_callbacks[key].add(callback)
+        return True

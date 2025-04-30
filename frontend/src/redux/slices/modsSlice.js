@@ -1,73 +1,95 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import axios from 'axios';
 
-// API calls
+const API_ENDPOINTS = {
+  MODS: '/api/mods',
+  MOD_TOGGLE: (id) => `/api/mods/${id}/toggle`,
+  MOD_SETTINGS: (id) => `/api/mods/${id}/settings`,
+};
+
+const MAX_HISTORY_ENTRIES = 100;
+const STATUS = Object.freeze({
+  IDLE: 'idle',
+  LOADING: 'loading',
+  SUCCEEDED: 'succeeded',
+  FAILED: 'failed',
+});
+
+const handleAsyncRequest = async (request, rejectWithValue) => {
+  try {
+    const { data } = await request();
+    return data;
+  } catch (error) {
+    return rejectWithValue(error.response?.data ?? 'An error occurred');
+  }
+};
+
 export const fetchMods = createAsyncThunk(
   'mods/fetchMods',
-  async (_, { rejectWithValue }) => {
-    try {
-      const response = await axios.get('/api/mods');
-      return response.data;
-    } catch (error) {
-      return rejectWithValue(error.response.data);
-    }
-  }
+  async (_, { rejectWithValue }) => handleAsyncRequest(
+    () => axios.get(API_ENDPOINTS.MODS),
+    rejectWithValue
+  )
 );
 
 export const toggleMod = createAsyncThunk(
   'mods/toggleMod',
-  async ({ modId, enabled }, { rejectWithValue }) => {
-    try {
-      const response = await axios.patch(`/api/mods/${modId}/toggle`, { enabled });
-      return response.data;
-    } catch (error) {
-      return rejectWithValue(error.response.data);
-    }
-  }
+  async ({ modId, enabled }, { rejectWithValue }) => handleAsyncRequest(
+    () => axios.patch(API_ENDPOINTS.MOD_TOGGLE(modId), { enabled }),
+    rejectWithValue
+  )
 );
 
 export const updateModSettings = createAsyncThunk(
   'mods/updateModSettings',
-  async ({ modId, settings }, { rejectWithValue }) => {
-    try {
-      const response = await axios.patch(`/api/mods/${modId}/settings`, settings);
-      return response.data;
-    } catch (error) {
-      return rejectWithValue(error.response.data);
-    }
-  }
+  async ({ modId, settings }, { rejectWithValue }) => handleAsyncRequest(
+    () => axios.patch(API_ENDPOINTS.MOD_SETTINGS(modId), settings),
+    rejectWithValue
+  )
 );
 
 export const createCustomMod = createAsyncThunk(
   'mods/createCustomMod',
-  async (modData, { rejectWithValue }) => {
-    try {
-      const response = await axios.post('/api/mods', modData);
-      return response.data;
-    } catch (error) {
-      return rejectWithValue(error.response.data);
-    }
-  }
+  async (modData, { rejectWithValue }) => handleAsyncRequest(
+    () => axios.post(API_ENDPOINTS.MODS, modData),
+    rejectWithValue
+  )
 );
 
 export const deleteMod = createAsyncThunk(
   'mods/deleteMod',
-  async (modId, { rejectWithValue }) => {
-    try {
-      await axios.delete(`/api/mods/${modId}`);
-      return modId;
-    } catch (error) {
-      return rejectWithValue(error.response.data);
-    }
-  }
+  async (modId, { rejectWithValue }) => handleAsyncRequest(
+    () => axios.delete(`${API_ENDPOINTS.MODS}/${modId}`).then(() => modId),
+    rejectWithValue
+  )
 );
 
 const initialState = {
   mods: [],
-  activeMods: [],
-  status: 'idle', // 'idle' | 'loading' | 'succeeded' | 'failed'
+  activeMods: new Set(),
+  status: STATUS.IDLE,
   error: null,
-  modHistory: [], // keeps track of mod activation/deactivation events
+  modHistory: [],
+};
+
+const addToHistory = (state, modId, action, source = 'system') => {
+  state.modHistory = [
+    {
+      modId,
+      action,
+      timestamp: new Date().toISOString(),
+      source,
+    },
+    ...state.modHistory.slice(0, MAX_HISTORY_ENTRIES - 1),
+  ];
+};
+
+const updateModState = (state, id, enabled) => {
+  if (enabled) {
+    state.activeMods.add(id);
+  } else {
+    state.activeMods.delete(id);
+  }
 };
 
 const modsSlice = createSlice({
@@ -76,26 +98,8 @@ const modsSlice = createSlice({
   reducers: {
     setActiveMod: (state, action) => {
       const { modId, isActive } = action.payload;
-      
-      if (isActive) {
-        if (!state.activeMods.includes(modId)) {
-          state.activeMods.push(modId);
-        }
-      } else {
-        state.activeMods = state.activeMods.filter(id => id !== modId);
-      }
-      
-      // Add to history
-      state.modHistory.push({
-        modId,
-        action: isActive ? 'activated' : 'deactivated',
-        timestamp: new Date().toISOString(),
-      });
-      
-      // Keep history limited to 100 entries
-      if (state.modHistory.length > 100) {
-        state.modHistory.shift();
-      }
+      updateModState(state, modId, isActive);
+      addToHistory(state, modId, isActive ? 'activated' : 'deactivated');
     },
     clearModHistory: (state) => {
       state.modHistory = [];
@@ -103,95 +107,62 @@ const modsSlice = createSlice({
   },
   extraReducers: (builder) => {
     builder
-      // Fetch Mods
       .addCase(fetchMods.pending, (state) => {
-        state.status = 'loading';
+        state.status = STATUS.LOADING;
+        state.error = null;
       })
       .addCase(fetchMods.fulfilled, (state, action) => {
-        state.status = 'succeeded';
+        state.status = STATUS.SUCCEEDED;
         state.mods = action.payload;
-        // Initialize activeMods based on enabled status
-        state.activeMods = action.payload
-          .filter(mod => mod.enabled)
-          .map(mod => mod.id);
+        state.activeMods = new Set(action.payload.filter(mod => mod.enabled).map(mod => mod.id));
       })
       .addCase(fetchMods.rejected, (state, action) => {
-        state.status = 'failed';
+        state.status = STATUS.FAILED;
         state.error = action.payload || 'Failed to fetch mods';
       })
-      
-      // Toggle Mod
       .addCase(toggleMod.pending, (state) => {
-        state.status = 'loading';
+        state.status = STATUS.LOADING;
+        state.error = null;
       })
       .addCase(toggleMod.fulfilled, (state, action) => {
-        state.status = 'succeeded';
+        state.status = STATUS.SUCCEEDED;
         const { id, enabled } = action.payload;
-        const mod = state.mods.find(mod => mod.id === id);
-        if (mod) {
-          mod.enabled = enabled;
-        }
+        const modIndex = state.mods.findIndex(mod => mod.id === id);
         
-        // Update active mods list
-        if (enabled) {
-          if (!state.activeMods.includes(id)) {
-            state.activeMods.push(id);
-          }
-        } else {
-          state.activeMods = state.activeMods.filter(modId => modId !== id);
-        }
-        
-        // Add to history
-        state.modHistory.push({
-          modId: id,
-          action: enabled ? 'activated' : 'deactivated',
-          timestamp: new Date().toISOString(),
-          source: 'user',
-        });
-        
-        // Keep history limited
-        if (state.modHistory.length > 100) {
-          state.modHistory.shift();
+        if (modIndex !== -1) {
+          state.mods[modIndex] = { ...state.mods[modIndex], enabled };
+          updateModState(state, id, enabled);
+          addToHistory(state, id, enabled ? 'activated' : 'deactivated', 'user');
         }
       })
       .addCase(toggleMod.rejected, (state, action) => {
-        state.status = 'failed';
+        state.status = STATUS.FAILED;
         state.error = action.payload || 'Failed to toggle mod';
       })
-      
-      // Update Mod Settings
       .addCase(updateModSettings.fulfilled, (state, action) => {
         const updatedMod = action.payload;
-        const index = state.mods.findIndex(mod => mod.id === updatedMod.id);
-        if (index !== -1) {
-          state.mods[index] = updatedMod;
-        }
+        state.mods = state.mods.map(mod => 
+          mod.id === updatedMod.id ? { ...mod, ...updatedMod } : mod
+        );
       })
-      
-      // Create Custom Mod
       .addCase(createCustomMod.fulfilled, (state, action) => {
         state.mods.push(action.payload);
-        // If the new mod is enabled, add it to active mods
         if (action.payload.enabled) {
-          state.activeMods.push(action.payload.id);
+          updateModState(state, action.payload.id, true);
         }
       })
-      
-      // Delete Mod
       .addCase(deleteMod.fulfilled, (state, action) => {
         state.mods = state.mods.filter(mod => mod.id !== action.payload);
-        state.activeMods = state.activeMods.filter(id => id !== action.payload);
+        updateModState(state, action.payload, false);
       });
   },
 });
 
 export const { setActiveMod, clearModHistory } = modsSlice.actions;
 
-// Selectors
 export const selectAllMods = state => state.mods.mods;
-export const selectActiveMods = state => state.mods.activeMods;
-export const selectModById = (state, modId) => 
-  state.mods.mods.find(mod => mod.id === modId);
+export const selectActiveMods = state => Array.from(state.mods.activeMods);
+export const selectModById = (state, modId) => state.mods.mods.find(mod => mod.id === modId);
 export const selectModStatus = state => state.mods.status;
 export const selectModError = state => state.mods.error;
 export const selectModHistory = state => state.mods.modHistory;

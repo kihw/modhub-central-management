@@ -1,75 +1,89 @@
 import { createSlice } from '@reduxjs/toolkit';
 
+const MOD_TYPES = Object.freeze({
+  GAMING: 'gamingMod',
+  NIGHT: 'nightMod',
+  MEDIA: 'mediaMod',
+  CUSTOM: 'customMod'
+});
+
+const MAX_LOGS = 1000;
+
+const DEFAULT_MOD_STATE = Object.freeze({
+  active: false,
+  rules: []
+});
+
 const initialState = {
   mods: {
-    gamingMod: {
-      id: 'gamingMod',
+    [MOD_TYPES.GAMING]: {
+      ...DEFAULT_MOD_STATE,
+      id: MOD_TYPES.GAMING,
       name: 'Gaming Mod',
       description: 'Optimize your peripherals for gaming performance',
       icon: 'gamepad',
-      active: false,
       color: '#E74C3C',
-      settings: {
+      settings: Object.freeze({
         dpiBoost: true,
         rgbMode: 'gaming',
         audioEnhance: true,
         priorityBoost: true
-      },
+      }),
       rules: [
-        { id: 'rule1', name: 'Detect games', processPatterns: ['steam.exe', 'epicgames.exe', 'game.exe'], enabled: true },
-        { id: 'rule2', name: 'Custom DPI settings', enabled: true }
+        { id: 'gaming-rule-1', name: 'Detect games', processPatterns: ['steam.exe', 'epicgames.exe', 'game.exe'], enabled: true },
+        { id: 'gaming-rule-2', name: 'Custom DPI settings', enabled: true }
       ]
     },
-    nightMod: {
-      id: 'nightMod',
+    [MOD_TYPES.NIGHT]: {
+      ...DEFAULT_MOD_STATE,
+      id: MOD_TYPES.NIGHT,
       name: 'Night Mod',
       description: 'Optimize display and lighting for evening use',
       icon: 'moon',
-      active: false,
       color: '#34495E',
-      settings: {
+      settings: Object.freeze({
         blueLight: 'reduced',
         brightness: 60,
         rgbMode: 'dim',
         scheduledStart: '22:00',
         scheduledEnd: '07:00'
-      },
+      }),
       rules: [
-        { id: 'rule1', name: 'Time-based activation', timeCondition: true, enabled: true },
-        { id: 'rule2', name: 'Inactivity detection', inactivityTrigger: 30, enabled: true }
+        { id: 'night-rule-1', name: 'Time-based activation', timeCondition: true, enabled: true },
+        { id: 'night-rule-2', name: 'Inactivity detection', inactivityTrigger: 30, enabled: true }
       ]
     },
-    mediaMod: {
-      id: 'mediaMod',
+    [MOD_TYPES.MEDIA]: {
+      ...DEFAULT_MOD_STATE,
+      id: MOD_TYPES.MEDIA,
       name: 'Media Mod',
       description: 'Enhanced audio and lighting for media consumption',
       icon: 'film',
-      active: false,
       color: '#3498DB',
-      settings: {
+      settings: Object.freeze({
         audioProfile: 'media',
         surroundSound: true,
         rgbMode: 'ambient',
         enhancedContrast: true
-      },
+      }),
       rules: [
-        { id: 'rule1', name: 'Detect media apps', processPatterns: ['vlc.exe', 'netflix.exe', 'spotify.exe'], enabled: true }
+        { id: 'media-rule-1', name: 'Detect media apps', processPatterns: ['vlc.exe', 'netflix.exe', 'spotify.exe'], enabled: true }
       ]
     },
-    customMod: {
-      id: 'customMod',
+    [MOD_TYPES.CUSTOM]: {
+      ...DEFAULT_MOD_STATE,
+      id: MOD_TYPES.CUSTOM,
       name: 'Custom Mod',
       description: 'Your personalized mod configuration',
       icon: 'sliders',
-      active: false,
       color: '#9B59B6',
-      settings: {
+      settings: Object.freeze({
         customSetting1: false,
         customSetting2: 'default',
         rgbMode: 'custom'
-      },
+      }),
       rules: [
-        { id: 'rule1', name: 'Custom rule', enabled: false }
+        { id: 'custom-rule-1', name: 'Custom rule', enabled: false }
       ]
     }
   },
@@ -87,160 +101,108 @@ const initialState = {
   settings: {
     startWithSystem: true,
     notificationsEnabled: true,
-    conflictResolution: 'priority', // priority, manual, last-wins
+    conflictResolution: 'priority',
     dataCollection: false,
-    theme: 'system', // light, dark, system
+    theme: 'system',
     advancedMode: false,
     checkForUpdates: true
   }
 };
 
-export const projectSlice = createSlice({
+const createLogEntry = (action, type = 'system') => ({
+  id: crypto.randomUUID(),
+  timestamp: new Date().toISOString(),
+  action,
+  type
+});
+
+const projectSlice = createSlice({
   name: 'project',
   initialState,
   reducers: {
-    toggleMod: (state, action) => {
-      const modId = action.payload;
-      state.mods[modId].active = !state.mods[modId].active;
+    toggleMod: (state, { payload: modId }) => {
+      const mod = state.mods[modId];
+      if (!mod) return;
       
-      // Log the action
-      state.logs.push({
-        timestamp: new Date().toISOString(),
-        action: `${state.mods[modId].active ? 'Activated' : 'Deactivated'} ${state.mods[modId].name}`,
-        type: 'user'
-      });
+      mod.active = !mod.active;
+      state.logs = [createLogEntry(`${mod.active ? 'Activated' : 'Deactivated'} ${mod.name}`, 'user'), ...state.logs].slice(0, MAX_LOGS);
     },
     
-    updateModSettings: (state, action) => {
-      const { modId, settings } = action.payload;
-      state.mods[modId].settings = {
-        ...state.mods[modId].settings,
-        ...settings
-      };
-      
-      state.logs.push({
-        timestamp: new Date().toISOString(),
-        action: `Updated settings for ${state.mods[modId].name}`,
-        type: 'user'
-      });
+    updateModSettings: (state, { payload: { modId, settings } }) => {
+      const mod = state.mods[modId];
+      if (!mod) return;
+
+      mod.settings = { ...mod.settings, ...settings };
+      state.logs = [createLogEntry(`Updated settings for ${mod.name}`, 'user'), ...state.logs].slice(0, MAX_LOGS);
     },
     
-    updateModRule: (state, action) => {
-      const { modId, ruleId, ruleData } = action.payload;
-      const ruleIndex = state.mods[modId].rules.findIndex(rule => rule.id === ruleId);
-      
-      if (ruleIndex !== -1) {
-        state.mods[modId].rules[ruleIndex] = {
-          ...state.mods[modId].rules[ruleIndex],
-          ...ruleData
-        };
-        
-        state.logs.push({
-          timestamp: new Date().toISOString(),
-          action: `Updated rule "${state.mods[modId].rules[ruleIndex].name}" for ${state.mods[modId].name}`,
-          type: 'user'
-        });
-      }
+    updateModRule: (state, { payload: { modId, ruleId, ruleData } }) => {
+      const mod = state.mods[modId];
+      if (!mod) return;
+
+      const ruleIndex = mod.rules.findIndex(rule => rule.id === ruleId);
+      if (ruleIndex === -1) return;
+
+      mod.rules[ruleIndex] = { ...mod.rules[ruleIndex], ...ruleData };
+      state.logs = [createLogEntry(`Updated rule "${mod.rules[ruleIndex].name}" for ${mod.name}`, 'user'), ...state.logs].slice(0, MAX_LOGS);
     },
     
-    addModRule: (state, action) => {
-      const { modId, rule } = action.payload;
-      state.mods[modId].rules.push(rule);
-      
-      state.logs.push({
-        timestamp: new Date().toISOString(),
-        action: `Added new rule "${rule.name}" to ${state.mods[modId].name}`,
-        type: 'user'
-      });
+    addModRule: (state, { payload: { modId, rule } }) => {
+      const mod = state.mods[modId];
+      if (!mod) return;
+
+      const newRule = { ...rule, id: `${modId}-rule-${crypto.randomUUID()}` };
+      mod.rules.push(newRule);
+      state.logs = [createLogEntry(`Added new rule "${rule.name}" to ${mod.name}`, 'user'), ...state.logs].slice(0, MAX_LOGS);
     },
     
-    removeModRule: (state, action) => {
-      const { modId, ruleId } = action.payload;
-      const ruleIndex = state.mods[modId].rules.findIndex(rule => rule.id === ruleId);
-      
-      if (ruleIndex !== -1) {
-        const ruleName = state.mods[modId].rules[ruleIndex].name;
-        state.mods[modId].rules.splice(ruleIndex, 1);
-        
-        state.logs.push({
-          timestamp: new Date().toISOString(),
-          action: `Removed rule "${ruleName}" from ${state.mods[modId].name}`,
-          type: 'user'
-        });
-      }
+    removeModRule: (state, { payload: { modId, ruleId } }) => {
+      const mod = state.mods[modId];
+      if (!mod) return;
+
+      const ruleIndex = mod.rules.findIndex(rule => rule.id === ruleId);
+      if (ruleIndex === -1) return;
+
+      const ruleName = mod.rules[ruleIndex].name;
+      mod.rules = mod.rules.filter(rule => rule.id !== ruleId);
+      state.logs = [createLogEntry(`Removed rule "${ruleName}" from ${mod.name}`, 'user'), ...state.logs].slice(0, MAX_LOGS);
     },
     
-    updateActiveProcesses: (state, action) => {
-      state.activeProcesses = action.payload;
+    updateActiveProcesses: (state, { payload }) => {
+      state.activeProcesses = Array.isArray(payload) ? payload : [];
     },
     
-    updateSystemStatus: (state, action) => {
-      state.systemStatus = {
-        ...state.systemStatus,
-        ...action.payload
-      };
+    updateSystemStatus: (state, { payload }) => {
+      state.systemStatus = { ...state.systemStatus, ...payload, lastActivity: Date.now() };
     },
     
-    addLog: (state, action) => {
-      state.logs.push({
-        timestamp: new Date().toISOString(),
-        ...action.payload
-      });
-      
-      // Keep only the last 1000 logs
-      if (state.logs.length > 1000) {
-        state.logs = state.logs.slice(-1000);
-      }
+    addLog: (state, { payload: { action, type } }) => {
+      state.logs = [createLogEntry(action, type), ...state.logs].slice(0, MAX_LOGS);
     },
     
-    updateSettings: (state, action) => {
-      state.settings = {
-        ...state.settings,
-        ...action.payload
-      };
-      
-      state.logs.push({
-        timestamp: new Date().toISOString(),
-        action: 'Updated application settings',
-        type: 'system'
-      });
+    updateSettings: (state, { payload }) => {
+      state.settings = { ...state.settings, ...payload };
+      state.logs = [createLogEntry('Updated application settings'), ...state.logs].slice(0, MAX_LOGS);
     },
     
-    createCustomMod: (state, action) => {
-      const { id, name, description, icon, color, settings, rules } = action.payload;
-      
+    createCustomMod: (state, { payload }) => {
+      const { id } = payload;
+      if (state.mods[id] || Object.values(MOD_TYPES).includes(id)) return;
+
       state.mods[id] = {
-        id,
-        name,
-        description,
-        icon,
-        active: false,
-        color,
-        settings,
-        rules: rules || []
+        ...DEFAULT_MOD_STATE,
+        ...payload,
+        rules: payload.rules?.map(rule => ({ ...rule, id: `${id}-rule-${crypto.randomUUID()}` })) || []
       };
-      
-      state.logs.push({
-        timestamp: new Date().toISOString(),
-        action: `Created new custom mod: ${name}`,
-        type: 'user'
-      });
+      state.logs = [createLogEntry(`Created new custom mod: ${payload.name}`, 'user'), ...state.logs].slice(0, MAX_LOGS);
     },
     
-    deleteMod: (state, action) => {
-      const modId = action.payload;
-      
-      // Only allow deletion of custom mods
-      if (modId !== 'gamingMod' && modId !== 'nightMod' && modId !== 'mediaMod' && state.mods[modId]) {
-        const modName = state.mods[modId].name;
-        delete state.mods[modId];
-        
-        state.logs.push({
-          timestamp: new Date().toISOString(),
-          action: `Deleted mod: ${modName}`,
-          type: 'user'
-        });
-      }
+    deleteMod: (state, { payload: modId }) => {
+      if (Object.values(MOD_TYPES).includes(modId) || !state.mods[modId]) return;
+
+      const modName = state.mods[modId].name;
+      delete state.mods[modId];
+      state.logs = [createLogEntry(`Deleted mod: ${modName}`, 'user'), ...state.logs].slice(0, MAX_LOGS);
     },
     
     clearLogs: (state) => {

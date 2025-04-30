@@ -3,6 +3,33 @@ import { createSlice } from '@reduxjs/toolkit';
 const initialState = {
   notifications: [],
   unreadCount: 0,
+  maxNotifications: 100
+};
+
+const createNotification = (type, payload) => ({
+  id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+  timestamp: payload.timestamp || new Date().toISOString(),
+  read: false,
+  type,
+  priority: payload.priority || 'normal',
+  ...payload
+});
+
+const removeOldestNotification = (state) => {
+  const oldestUnreadIndex = state.notifications.findIndex(n => !n.read);
+  if (oldestUnreadIndex !== -1) {
+    state.notifications.splice(oldestUnreadIndex, 1);
+  } else {
+    state.notifications.pop();
+  }
+};
+
+const addNotificationHelper = (state, notification) => {
+  if (state.notifications.length >= state.maxNotifications) {
+    removeOldestNotification(state);
+  }
+  state.notifications.unshift(notification);
+  state.unreadCount++;
 };
 
 export const notificationSlice = createSlice({
@@ -10,19 +37,10 @@ export const notificationSlice = createSlice({
   initialState,
   reducers: {
     addNotification: (state, action) => {
-      const notification = {
-        id: Date.now(),
-        timestamp: new Date().toISOString(),
-        read: false,
-        ...action.payload,
-      };
-      state.notifications.unshift(notification);
-      state.unreadCount += 1;
+      addNotificationHelper(state, createNotification('GENERIC', action.payload));
     },
     removeNotification: (state, action) => {
-      const index = state.notifications.findIndex(
-        (notification) => notification.id === action.payload
-      );
+      const index = state.notifications.findIndex(n => n.id === action.payload);
       if (index !== -1) {
         const wasUnread = !state.notifications[index].read;
         state.notifications.splice(index, 1);
@@ -32,66 +50,55 @@ export const notificationSlice = createSlice({
       }
     },
     markAsRead: (state, action) => {
-      const notification = state.notifications.find(
-        (notification) => notification.id === action.payload
-      );
+      const notification = state.notifications.find(n => n.id === action.payload);
       if (notification && !notification.read) {
         notification.read = true;
         state.unreadCount = Math.max(0, state.unreadCount - 1);
       }
     },
     markAllAsRead: (state) => {
-      state.notifications.forEach((notification) => {
-        notification.read = true;
-      });
+      state.notifications.forEach(n => { n.read = true; });
       state.unreadCount = 0;
     },
     clearAllNotifications: (state) => {
       state.notifications = [];
       state.unreadCount = 0;
     },
-    // Action pour les notifications de changement d'état d'un mod
     modStateChanged: (state, action) => {
       const { modId, modName, enabled, timestamp } = action.payload;
-      const notification = {
-        id: Date.now(),
-        type: 'MOD_STATE',
+      addNotificationHelper(state, createNotification('MOD_STATE', {
         title: `${modName} ${enabled ? 'activé' : 'désactivé'}`,
         message: `Le mod ${modName} a été ${enabled ? 'activé' : 'désactivé'}`,
         modId,
-        timestamp: timestamp || new Date().toISOString(),
-        read: false,
-      };
-      state.notifications.unshift(notification);
-      state.unreadCount += 1;
+        timestamp,
+        priority: 'high'
+      }));
     },
-    // Action pour les notifications de détection d'application
     applicationDetected: (state, action) => {
       const { appName, modName, action: modAction } = action.payload;
-      const notification = {
-        id: Date.now(),
-        type: 'APP_DETECTED',
+      addNotificationHelper(state, createNotification('APP_DETECTED', {
         title: `${appName} détecté`,
         message: `${modName} a été ${modAction} suite à la détection de ${appName}`,
-        timestamp: new Date().toISOString(),
-        read: false,
-      };
-      state.notifications.unshift(notification);
-      state.unreadCount += 1;
+        priority: 'medium'
+      }));
     },
-    // Action pour les notifications systèmes
     systemNotification: (state, action) => {
-      const notification = {
-        id: Date.now(),
-        type: 'SYSTEM',
-        timestamp: new Date().toISOString(),
-        read: false,
+      addNotificationHelper(state, createNotification('SYSTEM', {
         ...action.payload,
-      };
-      state.notifications.unshift(notification);
-      state.unreadCount += 1;
+        priority: action.payload.priority || 'high'
+      }));
     },
-  },
+    setMaxNotifications: (state, action) => {
+      const newMax = Math.max(1, Math.floor(action.payload));
+      state.maxNotifications = newMax;
+      while (state.notifications.length > newMax) {
+        const removed = state.notifications.pop();
+        if (!removed.read) {
+          state.unreadCount = Math.max(0, state.unreadCount - 1);
+        }
+      }
+    }
+  }
 });
 
 export const {
@@ -103,10 +110,11 @@ export const {
   modStateChanged,
   applicationDetected,
   systemNotification,
+  setMaxNotifications
 } = notificationSlice.actions;
 
-// Selectors
-export const selectNotifications = (state) => state.notifications.notifications;
-export const selectUnreadCount = (state) => state.notifications.unreadCount;
+export const selectNotifications = state => state.notifications.notifications;
+export const selectUnreadCount = state => state.notifications.unreadCount;
+export const selectMaxNotifications = state => state.notifications.maxNotifications;
 
 export default notificationSlice.reducer;

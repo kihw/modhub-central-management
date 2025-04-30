@@ -1,8 +1,4 @@
 #!/usr/bin/env python3
-"""
-Run script for launching ModHub Central backend and frontend.
-Supports concurrent execution of backend and frontend services.
-"""
 
 import os
 import sys
@@ -14,252 +10,171 @@ import signal
 from pathlib import Path
 import requests
 from requests.exceptions import RequestException
+from typing import Optional, Tuple
 
-# Define paths
 ROOT_DIR = Path(__file__).resolve().parent
 BACKEND_DIR = ROOT_DIR / "backend"
 FRONTEND_DIR = ROOT_DIR / "frontend"
+BACKEND_PORT = 8668
+FRONTEND_PORT = 3000
 
-# Global processes
 processes = []
 stop_event = threading.Event()
 
-def is_tool_available(command):
-    """Check if a command-line tool is available."""
+def is_tool_available(command: str) -> bool:
     try:
-        subprocess.run(
-            [command, "--version"],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            check=False,
-            shell=True
-        )
-        return True
-    except FileNotFoundError:
+        print(f"Checking for {command} availability...")
+        # On Windows, try both the command and command.cmd
+        if platform.system() == "Windows" and command == "npm":
+            try:
+                result = subprocess.run(["npm.cmd", "--version"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=False)
+                if result.returncode == 0:
+                    print(f"Found npm.cmd: {result.stdout.strip()}")
+                    return True
+            except Exception as e:
+                print(f"Exception checking for npm.cmd: {e}")
+                
+        # Try the original command
+        result = subprocess.run([command, "--version"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=False)
+        print(f"Return code: {result.returncode}")
+        print(f"Output: {result.stdout}")
+        print(f"Error: {result.stderr}")
+        return result.returncode == 0
+    except Exception as e:
+        print(f"Exception checking for {command}: {e}")
         return False
-
-def run_command(command, cwd=None, env=None, capture_output=False, text=True):
-    """Run a shell command and handle errors."""
+    
+def run_command(command, cwd: Optional[Path] = None, env: Optional[dict] = None, capture_output: bool = False, text: bool = True) -> Optional[subprocess.Popen]:
     try:
         cmd_str = ' '.join(command) if isinstance(command, list) else command
         print(f"Running: {cmd_str}")
         
-        # Create new env with PATH if not provided
-        if env is None:
-            env = os.environ.copy()
+        process_env = os.environ.copy()
+        if env:
+            process_env.update(env)
         
-        # Determine appropriate shell parameter based on platform
-        use_shell = True
-        
-        process = subprocess.Popen(
+        return subprocess.Popen(
             cmd_str, 
-            cwd=cwd, 
-            env=env, 
-            shell=use_shell, 
+            cwd=str(cwd) if cwd else None, 
+            env=process_env,
+            shell=True,
             stdout=subprocess.PIPE if capture_output else None,
             stderr=subprocess.PIPE if capture_output else None,
-            text=text
+            text=text,
+            encoding='utf-8' if text else None,
+            bufsize=1
         )
-        return process
     except Exception as e:
-        print(f"Error executing command: {cmd_str}")
-        print(f"Error details: {e}")
+        print(f"Error executing command: {cmd_str}\nDetails: {e}")
         return None
 
-def check_backend_health():
-    """Check if backend is up and running."""
+def check_backend_health() -> bool:
     try:
-        response = requests.get("http://localhost:8668/api/status", timeout=2)
+        response = requests.get(f"http://localhost:{BACKEND_PORT}/api/status", timeout=2)
         return response.status_code == 200
     except RequestException:
         return False
 
-def setup_backend_environment():
-    """Prepare the backend virtual environment."""
+def setup_backend_environment() -> Tuple[Optional[Path], Optional[Path]]:
     venv_dir = BACKEND_DIR / "venv"
+    is_windows = platform.system() == "Windows"
+    python_path = venv_dir / ("Scripts" if is_windows else "bin") / ("python.exe" if is_windows else "python")
+    pip_path = venv_dir / ("Scripts" if is_windows else "bin") / ("pip.exe" if is_windows else "pip")
     
-    # Determine Python executable in the virtual environment
-    if platform.system() == "Windows":
-        python_path = venv_dir / "Scripts" / "python.exe"
-        pip_path = venv_dir / "Scripts" / "pip.exe"
-    else:
-        python_path = venv_dir / "bin" / "python"
-        pip_path = venv_dir / "bin" / "pip"
-    
-    # Verify virtual environment exists
     if not venv_dir.exists():
-        print("Creating virtual environment...")
-        create_venv_cmd = [sys.executable, "-m", "venv", str(venv_dir)]
-        process = run_command(create_venv_cmd)
-        if process is None or process.wait() != 0:
-            print("Failed to create virtual environment")
+        process = run_command([sys.executable, "-m", "venv", str(venv_dir)])
+        if not process or process.wait() != 0:
             return None, None
     
-    # Install package to verify environment
-    print("Installing required packages...")
-    install_cmd = [str(pip_path), "install", "-U", "pip", "setuptools", "wheel"]
-    process = run_command(install_cmd)
-    if process is None or process.wait() != 0:
-        print("Failed to upgrade pip in virtual environment")
+    process = run_command([str(python_path), "-m", "pip", "install", "-U", "pip", "setuptools", "wheel"])
+    if not process or process.wait() != 0:
+        print("Failed to upgrade pip")
+        return None, None
     
     return python_path, pip_path
 
-def run_backend():
-    """Run the backend FastAPI server."""
-    global processes
+def run_backend() -> Optional[subprocess.Popen]:
+    python_exe = "Scripts/python.exe" if platform.system() == "Windows" else "bin/python"
+    backend_cmd = [str(BACKEND_DIR / "venv" / python_exe), "main.py"]
     
-    if platform.system() == "Windows":
-        backend_cmd = [str(BACKEND_DIR / "venv" / "Scripts" / "python.exe"), "main.py"]
-    else:
-        backend_cmd = [str(BACKEND_DIR / "venv" / "bin" / "python"), "main.py"]
-    
-    print("Starting backend server...")
-    backend_process = run_command(backend_cmd, cwd=BACKEND_DIR)
-    
-    if backend_process is None:
-        print("Failed to start backend server")
-        return None
-    
-    processes.append(backend_process)
+    backend_process = run_command(backend_cmd, cwd=BACKEND_DIR, capture_output=True)
+    if backend_process:
+        processes.append(backend_process)
     return backend_process
 
-def run_frontend():
-    """Run the frontend development server."""
-    global processes
-    
-    # Check if node_modules exist, if not install
-    if not (FRONTEND_DIR / "node_modules").exists():
-        print("Installing frontend dependencies first...")
+def run_frontend() -> Optional[subprocess.Popen]:
+    node_modules = FRONTEND_DIR / "node_modules"
+    if not node_modules.exists():
         install_process = run_command("npm install", cwd=FRONTEND_DIR)
-        if install_process:
-            install_process.wait()
+        if install_process and install_process.wait() != 0:
+            return None
     
-    print("Starting frontend development server...")
-    if platform.system() == "Windows":
-        frontend_cmd = "npm start"
-    else:
-        frontend_cmd = "npm start"
-    
-    frontend_process = run_command(frontend_cmd, cwd=FRONTEND_DIR)
-    
-    if frontend_process is None:
-        print("Failed to start frontend server")
-        return None
-    
-    processes.append(frontend_process)
+    frontend_process = run_command("npm start", cwd=FRONTEND_DIR, capture_output=True)
+    if frontend_process:
+        processes.append(frontend_process)
     return frontend_process
 
-def tail_process_output(process, prefix=""):
-    """Continuously read and print process output."""
-    if process is None:
+def tail_process_output(process: subprocess.Popen, prefix: str = "") -> None:
+    if not process or not process.stdout:
         return
     
-    try:
-        while not stop_event.is_set():
-            output = process.stdout.readline()
-            if output == '' and process.poll() is not None:
-                break
-            if output:
-                print(f"{prefix}{output.strip()}")
-            if stop_event.is_set():
-                break
-    except Exception as e:
-        print(f"Error reading process output: {e}")
+    for line in iter(process.stdout.readline, ''):
+        if stop_event.is_set():
+            break
+        if line:
+            print(f"{prefix}{line.strip()}")
 
-def signal_handler(sig, frame):
-    """Handle Ctrl+C and other termination signals."""
+def signal_handler(sig, frame) -> None:
     print("\nShutting down ModHub Central services...")
     stop_event.set()
     
     for process in processes:
         try:
-            if platform.system() == "Windows":
-                process.terminate()
-            else:
-                process.send_signal(signal.SIGTERM)
-            print(f"Terminated process PID: {process.pid}")
-        except:
-            pass
-    
-    # Give processes a moment to shut down
-    time.sleep(1)
-    
-    # Force kill any remaining processes
-    for process in processes:
-        if process.poll() is None:  # Process still running
-            if platform.system() == "Windows":
-                process.kill()
-            else:
-                process.send_signal(signal.SIGKILL)
+            process.terminate()
+            process.wait(timeout=5)
+        except (subprocess.TimeoutExpired, Exception):
+            process.kill()
     
     sys.exit(0)
 
-def main():
-    """Main run function to start backend and frontend."""
-    global processes
-    
-    # Setup signal handling for graceful shutdown
+def main() -> int:
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
     
-    print("Starting ModHub Central services...")
-    
-    # Check for required tools
     if not is_tool_available("npm"):
-        print("Error: npm is not installed or not in PATH")
-        print("Please install Node.js and npm: https://nodejs.org/")
+        print("Error: npm is not installed")
         return 1
     
-    # Setup backend environment
     python_path, pip_path = setup_backend_environment()
-    if python_path is None or pip_path is None:
-        print("Failed to setup backend environment")
+    if not python_path or not pip_path:
         return 1
     
-    # Install dependencies
-    print("\n===== Installing Backend Dependencies =====")
-    install_cmd = [str(pip_path), "install", "-r", str(BACKEND_DIR / "requirements.txt")]
-    install_process = run_command(install_cmd)
-    if install_process is None or install_process.wait() != 0:
-        print("Failed to install backend dependencies")
+    requirements_process = run_command([str(pip_path), "install", "-r", str(BACKEND_DIR / "requirements.txt")])
+    if not requirements_process or requirements_process.wait() != 0:
         return 1
     
-    # Run backend
-    print("\n===== Starting Backend Service =====")
     backend_process = run_backend()
-    if backend_process is None:
+    if not backend_process:
         return 1
     
-    # Wait for backend to be ready
-    print("Waiting for backend to start...")
-    max_attempts = 30
-    for attempt in range(max_attempts):
+    for attempt in range(30):
         if check_backend_health():
             print("Backend started successfully!")
             break
-        if attempt == max_attempts - 1:
-            print("Backend failed to start within the expected time.")
+        if attempt == 29:
+            print("Backend failed to start")
             signal_handler(None, None)
             return 1
         time.sleep(1)
-        print(f"Waiting for backend to start... ({attempt+1}/{max_attempts})")
+        print(f"Waiting for backend... ({attempt+1}/30)")
     
-    # Run frontend
-    print("\n===== Starting Frontend Service =====")
     frontend_process = run_frontend()
-    if frontend_process is None:
+    if not frontend_process:
         signal_handler(None, None)
         return 1
     
-    # Create threads to read process outputs
-    backend_thread = threading.Thread(
-        target=tail_process_output, 
-        args=(backend_process, "[BACKEND] ")
-    )
-    frontend_thread = threading.Thread(
-        target=tail_process_output, 
-        args=(frontend_process, "[FRONTEND] ")
-    )
+    backend_thread = threading.Thread(target=tail_process_output, args=(backend_process, "[BACKEND] "))
+    frontend_thread = threading.Thread(target=tail_process_output, args=(frontend_process, "[FRONTEND] "))
     
     backend_thread.daemon = True
     frontend_thread.daemon = True
@@ -267,19 +182,15 @@ def main():
     backend_thread.start()
     frontend_thread.start()
     
-    print("\n===== ModHub Central is now running =====")
-    print("Backend: http://localhost:8668")
-    print("Frontend: http://localhost:3000")
-    print("Press Ctrl+C to stop all services")
+    print(f"\nModHub Central running:")
+    print(f"Backend: http://localhost:{BACKEND_PORT}")
+    print(f"Frontend: http://localhost:{FRONTEND_PORT}")
+    print("Press Ctrl+C to stop")
     
     try:
-        # Keep the main thread running
-        while True:
-            if backend_process.poll() is not None:
-                print("Backend process has terminated unexpectedly.")
-                break
-            if frontend_process.poll() is not None:
-                print("Frontend process has terminated unexpectedly.")
+        while not stop_event.is_set():
+            if any(p.poll() is not None for p in processes):
+                print("A process has terminated unexpectedly")
                 break
             time.sleep(1)
     except KeyboardInterrupt:

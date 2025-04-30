@@ -1,12 +1,12 @@
-from pydantic import BaseModel, Field, validator
-from typing import List, Optional, Dict, Any, Union
+from pydantic import BaseModel, Field, validator, conint, confloat
+from typing import List, Optional, Dict, Any
 from datetime import datetime
 from enum import Enum
 
 class ModType(str, Enum):
     GAMING = "gaming"
     NIGHT = "night"
-    MEDIA = "media"
+    MEDIA = "media" 
     CUSTOM = "custom"
 
 class Priority(int, Enum):
@@ -15,47 +15,37 @@ class Priority(int, Enum):
     HIGH = 10
 
 class ModBase(BaseModel):
-    name: str = Field(
-        ..., 
-        min_length=3, 
-        max_length=50, 
-        description="Name of the mod"
-    )
+    name: str = Field(..., min_length=3, max_length=50)
     type: ModType
-    description: Optional[str] = Field(
-        None, 
-        max_length=200
-    )
-    config: Dict[str, Any] = {}
+    description: Optional[str] = Field(None, max_length=200)
+    config: Dict[str, Any] = Field(default_factory=dict)
 
     @validator('name')
     def name_must_be_valid(cls, v):
-        # Ensure name doesn't contain special characters
         import re
         if not re.match(r'^[a-zA-Z0-9_\s-]+$', v):
             raise ValueError('Mod name can only contain letters, numbers, spaces, underscores, and hyphens')
-        return v
+        return v.strip()
+
+    @validator('config')
+    def validate_config(cls, v):
+        return v or {}
 
 class ModCreate(ModBase):
     priority: Priority = Priority.MEDIUM
+    is_active: bool = False
 
 class ModUpdate(BaseModel):
-    name: Optional[str] = Field(
-        None, 
-        min_length=3, 
-        max_length=50
-    )
-    description: Optional[str] = Field(
-        None, 
-        max_length=200
-    )
+    name: Optional[str] = Field(None, min_length=3, max_length=50)
+    description: Optional[str] = Field(None, max_length=200)
     config: Optional[Dict[str, Any]] = None
     is_active: Optional[bool] = None
     priority: Optional[Priority] = None
 
 class ModResponse(ModBase):
-    id: int
+    id: conint(gt=0)
     is_active: bool = False
+    priority: Priority
     created_at: datetime
     updated_at: Optional[datetime] = None
 
@@ -63,57 +53,43 @@ class ModResponse(ModBase):
         orm_mode = True
 
 class ModToggle(BaseModel):
-    enabled: bool = Field(..., description="New active state of the mod")
+    enabled: bool
 
 class ConditionBase(BaseModel):
-    condition_type: str = Field(
-        ..., 
-        description="Type of condition (e.g., process, time, system state)"
-    )
-    parameters: Dict[str, Any] = Field(
-        default_factory=dict, 
-        description="Parameters for the condition"
-    )
-    logic_operator: str = Field(
-        default="AND", 
-        description="Logical operator for combining conditions"
-    )
+    condition_type: str
+    parameters: Dict[str, Any] = Field(default_factory=dict)
+    logic_operator: str = "AND"
 
     @validator('condition_type')
     def validate_condition_type(cls, v):
-        valid_types = ['process', 'time', 'system_state', 'custom']
+        valid_types = {'process', 'time', 'system_state', 'custom'}
         if v.lower() not in valid_types:
             raise ValueError(f'Invalid condition type. Must be one of {valid_types}')
-        return v
+        return v.lower()
 
     @validator('logic_operator')
     def validate_logic_operator(cls, v):
-        valid_operators = ['AND', 'OR']
-        if v not in valid_operators:
+        valid_operators = {'AND', 'OR', 'NOT'}
+        if v.upper() not in valid_operators:
             raise ValueError(f'Invalid logic operator. Must be one of {valid_operators}')
-        return v
+        return v.upper()
 
 class ActionBase(BaseModel):
-    action_type: str = Field(
-        ..., 
-        description="Type of action to perform"
-    )
-    parameters: Dict[str, Any] = Field(
-        default_factory=dict, 
-        description="Parameters for the action"
-    )
+    action_type: str
+    parameters: Dict[str, Any] = Field(default_factory=dict)
+    priority: Priority = Priority.MEDIUM
 
     @validator('action_type')
     def validate_action_type(cls, v):
-        valid_types = ['mod_activation', 'mod_deactivation', 'system_command', 'notification', 'custom']
+        valid_types = {'mod_activation', 'mod_deactivation', 'system_command', 'notification', 'custom'}
         if v.lower() not in valid_types:
             raise ValueError(f'Invalid action type. Must be one of {valid_types}')
-        return v
+        return v.lower()
 
 class RuleBase(BaseModel):
-    name: str
-    description: Optional[str] = None
-    priority: int = 5
+    name: str = Field(..., min_length=3, max_length=50)
+    description: Optional[str] = Field(None, max_length=200)
+    priority: conint(ge=1, le=10) = Field(default=5)
 
 class RuleCreate(RuleBase):
     conditions: List[ConditionBase]
@@ -121,15 +97,15 @@ class RuleCreate(RuleBase):
     enabled: bool = True
 
 class RuleUpdate(BaseModel):
-    name: Optional[str] = None
-    description: Optional[str] = None
-    priority: Optional[int] = None
+    name: Optional[str] = Field(None, min_length=3, max_length=50)
+    description: Optional[str] = Field(None, max_length=200)
+    priority: Optional[conint(ge=1, le=10)] = None
     conditions: Optional[List[ConditionBase]] = None
     actions: Optional[List[ActionBase]] = None
     enabled: Optional[bool] = None
 
 class RuleResponse(RuleBase):
-    id: int
+    id: conint(gt=0)
     conditions: List[ConditionBase]
     actions: List[ActionBase]
     enabled: bool
@@ -141,45 +117,53 @@ class RuleResponse(RuleBase):
 
 class LogLevel(str, Enum):
     DEBUG = "debug"
-    INFO = "info"
+    INFO = "info" 
     WARNING = "warning"
     ERROR = "error"
     CRITICAL = "critical"
 
 class LogCreate(BaseModel):
     level: LogLevel = LogLevel.INFO
-    message: str
-    source: Optional[str] = None
+    message: str = Field(..., min_length=1, max_length=1000)
+    source: Optional[str] = Field(None, max_length=100)
     timestamp: Optional[datetime] = None
-    details: Optional[Dict[str, Any]] = None
+    details: Dict[str, Any] = Field(default_factory=dict)
 
 class LogResponse(LogCreate):
-    id: int
+    id: conint(gt=0)
     timestamp: datetime
 
     class Config:
         orm_mode = True
 
 class SettingsUpdate(BaseModel):
-    general: Optional[Dict[str, Any]] = None
-    automation: Optional[Dict[str, Any]] = None
-    performance: Optional[Dict[str, Any]] = None
-    ui: Optional[Dict[str, Any]] = None
+    general: Dict[str, Any] = Field(default_factory=dict)
+    automation: Dict[str, Any] = Field(default_factory=dict)
+    performance: Dict[str, Any] = Field(default_factory=dict)
+    ui: Dict[str, Any] = Field(default_factory=dict)
+
+    @validator('*')
+    def validate_settings(cls, v):
+        return v or {}
 
 class SystemInfoResponse(BaseModel):
-    cpu_count: int
-    total_memory: int
-    total_disk: int
-    version: str = "0.1.0"
+    cpu_count: conint(gt=0)
+    total_memory: conint(ge=0)
+    total_disk: conint(ge=0)
+    version: str = Field("0.1.0", regex=r'^\d+\.\d+\.\d+$')
+    platform: str
+    python_version: str
 
 class ProcessResponse(BaseModel):
-    pid: int
+    pid: conint(gt=0)
     name: str
-    memory_percent: Optional[float] = None
-    cpu_percent: Optional[float] = None
-    status: Optional[str] = None
+    memory_percent: confloat(ge=0, le=100)
+    cpu_percent: confloat(ge=0, le=100)
+    status: str
+    created_at: datetime
 
 class ResourceUsageResponse(BaseModel):
-    cpu_percent: float
-    memory_percent: float
-    disk_percent: float
+    cpu_percent: confloat(ge=0, le=100)
+    memory_percent: confloat(ge=0, le=100)
+    disk_percent: confloat(ge=0, le=100)
+    timestamp: datetime

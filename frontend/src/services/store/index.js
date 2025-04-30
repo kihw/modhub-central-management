@@ -1,24 +1,27 @@
 import { configureStore } from '@reduxjs/toolkit';
 import { combineReducers } from 'redux';
-import { persistStore, persistReducer } from 'redux-persist';
+import { persistStore, persistReducer, FLUSH, REHYDRATE, PAUSE, PERSIST, PURGE, REGISTER } from 'redux-persist';
 import storage from 'redux-persist/lib/storage';
 import thunk from 'redux-thunk';
 
-// Import reducers
-import authReducer from '@/slices/authSlice.js';
-import projectReducer from '@/slices/projectSlice.js';
-import uiReducer from '@/slices/uiSlice.js';
-import settingsReducer from '@/redux/slices/settingsSlice.js';
-import notificationReducer from '@/slices/notificationSlice.js';
+import authReducer from '@/slices/authSlice';
+import projectReducer from '@/slices/projectSlice';
+import uiReducer from '@/slices/uiSlice';
+import settingsReducer from '@/slices/settingsSlice';
+import notificationReducer from '@/slices/notificationSlice';
 
-// Configure persist options
 const persistConfig = {
-  key: 'root',
+  key: 'modhub-central',
+  version: 1,
   storage,
-  whitelist: ['auth', 'settings'], // Only persist these reducers
+  whitelist: ['auth', 'settings'],
+  blacklist: ['ui', 'notification', 'project'],
+  migrate: (state) => Promise.resolve(state),
+  timeout: 2000,
+  throttle: 1000,
+  debug: process.env.NODE_ENV !== 'production',
 };
 
-// Combine all reducers
 const rootReducer = combineReducers({
   auth: authReducer,
   project: projectReducer,
@@ -27,29 +30,38 @@ const rootReducer = combineReducers({
   notification: notificationReducer,
 });
 
-// Create persisted reducer
 const persistedReducer = persistReducer(persistConfig, rootReducer);
 
-// Configure the store
+const middleware = (getDefaultMiddleware) =>
+  getDefaultMiddleware({
+    serializableCheck: {
+      ignoredActions: [FLUSH, REHYDRATE, PAUSE, PERSIST, PURGE, REGISTER],
+      ignoredPaths: [
+        'ui.temporaryData',
+        'notification.queue',
+        'project.cache',
+        'auth.session'
+      ],
+      warnAfter: 200,
+    },
+    immutableCheck: {
+      warnAfter: 200,
+      ignoredPaths: ['notification.queue'],
+    },
+  }).concat(thunk);
+
 export const store = configureStore({
   reducer: persistedReducer,
-  middleware: (getDefaultMiddleware) => 
-    getDefaultMiddleware({
-      serializableCheck: {
-        // Ignore these action types
-        ignoredActions: ['persist/PERSIST', 'persist/REHYDRATE'],
-        // Ignore these field paths in state
-        ignoredPaths: ['some.path.to.ignore'],
-      },
-    }).concat(thunk),
+  middleware,
   devTools: process.env.NODE_ENV !== 'production',
+  preloadedState: undefined,
 });
 
-// Create persistor
-export const persistor = persistStore(store);
+export const persistor = persistStore(store, null, () => {
+  store.dispatch({ type: 'PERSIST_READY' });
+});
 
-// Export store types
 export type RootState = ReturnType<typeof store.getState>;
 export type AppDispatch = typeof store.dispatch;
 
-export default { store, persistor };
+export default store;

@@ -1,64 +1,84 @@
 import { createSlice } from '@reduxjs/toolkit';
 
+const THEME_STORAGE_KEY = 'themePreference';
+const ACCENT_COLOR_STORAGE_KEY = 'accentColor';
+const DEFAULT_ACCENT_COLOR = '#3B82F6';
+const SYSTEM_DARK_MEDIA_QUERY = '(prefers-color-scheme: dark)';
+const VALID_THEMES = ['light', 'dark', 'system'];
+const HEX_COLOR_REGEX = /^#[0-9A-F]{6}$/i;
+
 const loadThemePreference = () => {
-  const savedTheme = localStorage.getItem('themePreference');
-  
-  if (savedTheme) {
-    return savedTheme;
-  }
-  
-  // Check system preference if no saved preference
-  if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
-    return 'dark';
-  }
-  
-  return 'light';
+  const savedTheme = localStorage.getItem(THEME_STORAGE_KEY);
+  if (savedTheme && VALID_THEMES.includes(savedTheme)) return savedTheme;
+  return window.matchMedia?.(SYSTEM_DARK_MEDIA_QUERY).matches ? 'dark' : 'light';
+};
+
+const loadAccentColor = () => {
+  const savedColor = localStorage.getItem(ACCENT_COLOR_STORAGE_KEY);
+  return HEX_COLOR_REGEX.test(savedColor) ? savedColor : DEFAULT_ACCENT_COLOR;
 };
 
 const applyTheme = (theme) => {
-  if (theme === 'dark') {
-    document.documentElement.classList.add('dark');
-  } else {
-    document.documentElement.classList.remove('dark');
-  }
-  localStorage.setItem('themePreference', theme);
+  if (!VALID_THEMES.includes(theme)) return;
+  const isDark = theme === 'system' 
+    ? window.matchMedia(SYSTEM_DARK_MEDIA_QUERY).matches 
+    : theme === 'dark';
+  document.documentElement.classList.toggle('dark', isDark);
+  localStorage.setItem(THEME_STORAGE_KEY, theme);
+};
+
+const applyAccentColor = (color) => {
+  if (!HEX_COLOR_REGEX.test(color)) return;
+  document.documentElement.style.setProperty('--accent-color', color);
+  localStorage.setItem(ACCENT_COLOR_STORAGE_KEY, color);
 };
 
 const initialState = {
   currentTheme: loadThemePreference(),
-  availableThemes: ['light', 'dark', 'system'],
-  accentColor: '#3B82F6', // Default blue accent color
+  availableThemes: VALID_THEMES,
+  accentColor: loadAccentColor(),
 };
-
-// Apply the initial theme when the slice is first loaded
-applyTheme(initialState.currentTheme);
 
 const themeSlice = createSlice({
   name: 'theme',
   initialState,
   reducers: {
     setTheme: (state, action) => {
-      state.currentTheme = action.payload;
-      applyTheme(action.payload);
+      const newTheme = action.payload;
+      if (!VALID_THEMES.includes(newTheme)) return;
+      state.currentTheme = newTheme;
+      applyTheme(newTheme);
     },
     toggleTheme: (state) => {
-      const newTheme = state.currentTheme === 'dark' ? 'light' : 'dark';
+      const currentIndex = VALID_THEMES.indexOf(state.currentTheme);
+      const newTheme = VALID_THEMES[(currentIndex + 1) % VALID_THEMES.length];
       state.currentTheme = newTheme;
       applyTheme(newTheme);
     },
     setAccentColor: (state, action) => {
-      state.accentColor = action.payload;
-      document.documentElement.style.setProperty('--accent-color', action.payload);
+      const newColor = action.payload;
+      if (!HEX_COLOR_REGEX.test(newColor)) return;
+      state.accentColor = newColor;
+      applyAccentColor(newColor);
     },
     resetThemePreferences: (state) => {
       state.currentTheme = 'light';
-      state.accentColor = '#3B82F6';
+      state.accentColor = DEFAULT_ACCENT_COLOR;
       applyTheme('light');
-      document.documentElement.style.setProperty('--accent-color', '#3B82F6');
+      applyAccentColor(DEFAULT_ACCENT_COLOR);
     }
   }
 });
 
-export const { setTheme, toggleTheme, setAccentColor, resetThemePreferences } = themeSlice.actions;
+const systemThemeMediaQuery = window.matchMedia(SYSTEM_DARK_MEDIA_QUERY);
+systemThemeMediaQuery.addEventListener('change', (e) => {
+  if (initialState.currentTheme === 'system') {
+    applyTheme('system');
+  }
+});
 
+applyTheme(initialState.currentTheme);
+applyAccentColor(initialState.accentColor);
+
+export const { setTheme, toggleTheme, setAccentColor, resetThemePreferences } = themeSlice.actions;
 export default themeSlice.reducer;

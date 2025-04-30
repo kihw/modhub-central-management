@@ -1,103 +1,81 @@
 import { createSlice } from '@reduxjs/toolkit';
 
-const initialState = {
-  // Sidebar state
-  sidebarOpen: true,
+const MAX_NOTIFICATIONS = 50;
+const MOBILE_BREAKPOINT = 768;
+
+const getInitialState = () => ({
+  sidebarOpen: window.innerWidth >= MOBILE_BREAKPOINT,
   sidebarMinimized: false,
-  
-  // Theme settings
   darkMode: window.matchMedia('(prefers-color-scheme: dark)').matches,
-  accentColor: '#3b82f6', // Default blue
-  
-  // Layout
+  accentColor: '#3b82f6',
   currentView: 'dashboard',
-  
-  // Notification system
   notifications: [],
-  
-  // Modal management
   activeModal: null,
   modalData: null,
-  
-  // Tour guide for first-time users
   showTourGuide: true,
   tourStep: 0,
-  
-  // Settings panel
   settingsPanelOpen: false,
-  
-  // Mobile view detection
-  isMobileView: window.innerWidth < 768,
-  
-  // Loading states
+  isMobileView: window.innerWidth < MOBILE_BREAKPOINT,
   isLoading: false,
-  loadingMessage: '',
+  loadingMessage: ''
+});
+
+const updateDarkMode = (darkMode) => {
+  document.documentElement.classList.toggle('dark', darkMode);
 };
 
-export const uiSlice = createSlice({
+const uiSlice = createSlice({
   name: 'ui',
-  initialState,
+  initialState: getInitialState(),
   reducers: {
     toggleSidebar: (state) => {
       state.sidebarOpen = !state.sidebarOpen;
     },
-    setSidebarOpen: (state, action) => {
-      state.sidebarOpen = action.payload;
+    setSidebarOpen: (state, { payload }) => {
+      state.sidebarOpen = Boolean(payload);
     },
     toggleSidebarMinimized: (state) => {
       state.sidebarMinimized = !state.sidebarMinimized;
     },
     toggleDarkMode: (state) => {
       state.darkMode = !state.darkMode;
-      document.documentElement.classList.toggle('dark', state.darkMode);
+      updateDarkMode(state.darkMode);
     },
-    setDarkMode: (state, action) => {
-      state.darkMode = action.payload;
-      document.documentElement.classList.toggle('dark', state.darkMode);
+    setDarkMode: (state, { payload }) => {
+      state.darkMode = Boolean(payload);
+      updateDarkMode(state.darkMode);
     },
-    setAccentColor: (state, action) => {
-      state.accentColor = action.payload;
-      document.documentElement.style.setProperty('--accent-color', action.payload);
+    setAccentColor: (state, { payload }) => {
+      state.accentColor = payload;
+      document.documentElement.style.setProperty('--accent-color', payload);
     },
-    setCurrentView: (state, action) => {
-      state.currentView = action.payload;
+    setCurrentView: (state, { payload }) => {
+      state.currentView = String(payload);
     },
-    addNotification: (state, action) => {
-      const id = Date.now();
-      state.notifications.push({
-        id,
-        ...action.payload,
+    addNotification: (state, { payload }) => {
+      const notification = {
+        id: Date.now(),
         timestamp: new Date().toISOString(),
-      });
-      
-      // Auto-remove notifications after 5 seconds if they're not persistent
-      if (!action.payload.persistent) {
-        setTimeout(() => {
-          const index = state.notifications.findIndex(n => n.id === id);
-          if (index !== -1) {
-            state.notifications.splice(index, 1);
-          }
-        }, 5000);
-      }
+        ...payload
+      };
+      state.notifications = [notification, ...state.notifications].slice(0, MAX_NOTIFICATIONS);
     },
-    removeNotification: (state, action) => {
-      state.notifications = state.notifications.filter(
-        notification => notification.id !== action.payload
-      );
+    removeNotification: (state, { payload }) => {
+      state.notifications = state.notifications.filter(n => n.id !== payload);
     },
     clearNotifications: (state) => {
       state.notifications = [];
     },
-    openModal: (state, action) => {
-      state.activeModal = action.payload.type;
-      state.modalData = action.payload.data || null;
+    openModal: (state, { payload: { type, data = null } }) => {
+      state.activeModal = type;
+      state.modalData = data;
     },
     closeModal: (state) => {
       state.activeModal = null;
       state.modalData = null;
     },
-    setTourStep: (state, action) => {
-      state.tourStep = action.payload;
+    setTourStep: (state, { payload }) => {
+      state.tourStep = Number(payload);
     },
     completeTour: (state) => {
       state.showTourGuide = false;
@@ -106,21 +84,22 @@ export const uiSlice = createSlice({
     toggleSettingsPanel: (state) => {
       state.settingsPanelOpen = !state.settingsPanelOpen;
     },
-    setSettingsPanelOpen: (state, action) => {
-      state.settingsPanelOpen = action.payload;
+    setSettingsPanelOpen: (state, { payload }) => {
+      state.settingsPanelOpen = Boolean(payload);
     },
-    setMobileView: (state, action) => {
-      state.isMobileView = action.payload;
-      // Auto-close sidebar on mobile if it's currently open
-      if (action.payload && state.sidebarOpen) {
+    setMobileView: (state, { payload }) => {
+      const isMobile = Boolean(payload);
+      state.isMobileView = isMobile;
+      if (isMobile && state.sidebarOpen) {
         state.sidebarOpen = false;
       }
     },
-    setLoading: (state, action) => {
-      state.isLoading = action.payload.isLoading;
-      state.loadingMessage = action.payload.message || '';
-    }
-  },
+    setLoading: (state, { payload: { isLoading, message = '' } }) => {
+      state.isLoading = Boolean(isLoading);
+      state.loadingMessage = String(message);
+    },
+    resetState: () => getInitialState()
+  }
 });
 
 export const {
@@ -141,25 +120,26 @@ export const {
   toggleSettingsPanel,
   setSettingsPanelOpen,
   setMobileView,
-  setLoading
+  setLoading,
+  resetState
 } = uiSlice.actions;
 
-// Selectors
-export const selectSidebarOpen = (state) => state.ui.sidebarOpen;
-export const selectSidebarMinimized = (state) => state.ui.sidebarMinimized;
-export const selectDarkMode = (state) => state.ui.darkMode;
-export const selectAccentColor = (state) => state.ui.accentColor;
-export const selectCurrentView = (state) => state.ui.currentView;
-export const selectNotifications = (state) => state.ui.notifications;
-export const selectActiveModal = (state) => state.ui.activeModal;
-export const selectModalData = (state) => state.ui.modalData;
-export const selectTourGuide = (state) => ({
+export const selectUI = state => state.ui;
+export const selectSidebarOpen = state => state.ui.sidebarOpen;
+export const selectSidebarMinimized = state => state.ui.sidebarMinimized;
+export const selectDarkMode = state => state.ui.darkMode;
+export const selectAccentColor = state => state.ui.accentColor;
+export const selectCurrentView = state => state.ui.currentView;
+export const selectNotifications = state => state.ui.notifications;
+export const selectActiveModal = state => state.ui.activeModal;
+export const selectModalData = state => state.ui.modalData;
+export const selectTourGuide = state => ({
   show: state.ui.showTourGuide,
   step: state.ui.tourStep
 });
-export const selectSettingsPanelOpen = (state) => state.ui.settingsPanelOpen;
-export const selectIsMobileView = (state) => state.ui.isMobileView;
-export const selectLoadingState = (state) => ({
+export const selectSettingsPanelOpen = state => state.ui.settingsPanelOpen;
+export const selectIsMobileView = state => state.ui.isMobileView;
+export const selectLoadingState = state => ({
   isLoading: state.ui.isLoading,
   message: state.ui.loadingMessage
 });

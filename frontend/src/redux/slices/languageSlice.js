@@ -1,37 +1,61 @@
 import { createSlice } from '@reduxjs/toolkit';
 
+const SUPPORTED_LANGUAGES = Object.freeze(['en', 'fr']);
+const DEFAULT_LANGUAGE = SUPPORTED_LANGUAGES[0];
+const STORAGE_KEY = 'modHubLanguage';
+
 const getBrowserLanguage = () => {
-  const browserLang = navigator.language || navigator.userLanguage;
-  const shortLang = browserLang.split('-')[0];
-  
-  // Only support English and French for now
-  return ['en', 'fr'].includes(shortLang) ? shortLang : 'en';
+  try {
+    const browserLang = navigator.language || navigator.userLanguage;
+    const shortLang = browserLang?.split('-')[0]?.toLowerCase();
+    return SUPPORTED_LANGUAGES.includes(shortLang) ? shortLang : DEFAULT_LANGUAGE;
+  } catch {
+    return DEFAULT_LANGUAGE;
+  }
 };
 
-const initialState = {
-  language: localStorage.getItem('modHubLanguage') || getBrowserLanguage(),
-  available: ['en', 'fr'],
+const getStoredLanguage = () => {
+  try {
+    const storedLang = localStorage.getItem(STORAGE_KEY);
+    return SUPPORTED_LANGUAGES.includes(storedLang) ? storedLang : getBrowserLanguage();
+  } catch {
+    return getBrowserLanguage();
+  }
 };
+
+const initialState = Object.freeze({
+  language: getStoredLanguage(),
+  available: [...SUPPORTED_LANGUAGES],
+});
 
 export const languageSlice = createSlice({
   name: 'language',
   initialState,
   reducers: {
-    setLanguage: (state, action) => {
-      if (state.available.includes(action.payload)) {
-        state.language = action.payload;
-        localStorage.setItem('modHubLanguage', action.payload);
+    setLanguage: (state, { payload }) => {
+      const newLang = payload?.toLowerCase?.();
+      if (newLang && state.available.includes(newLang)) {
+        state.language = newLang;
+        try {
+          localStorage.setItem(STORAGE_KEY, newLang);
+        } catch (error) {
+          console.error('Failed to store language preference:', error);
+        }
       }
     },
-    addLanguage: (state, action) => {
-      if (!state.available.includes(action.payload)) {
-        state.available.push(action.payload);
+    addLanguage: (state, { payload }) => {
+      const langToAdd = payload?.toLowerCase?.();
+      if (langToAdd && typeof langToAdd === 'string' && !state.available.includes(langToAdd)) {
+        state.available = [...new Set([...state.available, langToAdd])].sort();
       }
     },
-    removeLanguage: (state, action) => {
-      // Can't remove all languages
-      if (state.available.length > 1 && action.payload !== state.language) {
-        state.available = state.available.filter(lang => lang !== action.payload);
+    removeLanguage: (state, { payload }) => {
+      const langToRemove = payload?.toLowerCase?.();
+      if (langToRemove && 
+          state.available.length > 1 && 
+          langToRemove !== state.language &&
+          langToRemove !== DEFAULT_LANGUAGE) {
+        state.available = state.available.filter(lang => lang !== langToRemove);
       }
     },
   },
@@ -39,7 +63,7 @@ export const languageSlice = createSlice({
 
 export const { setLanguage, addLanguage, removeLanguage } = languageSlice.actions;
 
-export const selectLanguage = (state) => state.language.language;
-export const selectAvailableLanguages = (state) => state.language.available;
+export const selectLanguage = state => state?.language?.language ?? DEFAULT_LANGUAGE;
+export const selectAvailableLanguages = state => state?.language?.available ?? [DEFAULT_LANGUAGE];
 
 export default languageSlice.reducer;

@@ -1,14 +1,37 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import authAPI from '../api/authAPI';
 
-// Async thunks
+const AUTH_TOKEN_KEY = 'auth_token';
+const AUTH_USER_KEY = 'auth_user';
+
+const saveAuthData = (token, user) => {
+  if (!token || !user) return;
+  localStorage.setItem(AUTH_TOKEN_KEY, token);
+  localStorage.setItem(AUTH_USER_KEY, JSON.stringify(user));
+};
+
+const clearAuthData = () => {
+  localStorage.removeItem(AUTH_TOKEN_KEY);
+  localStorage.removeItem(AUTH_USER_KEY);
+};
+
+const initialState = {
+  user: null,
+  token: null,
+  isAuthenticated: false,
+  isLoading: false,
+  error: null
+};
+
 export const login = createAsyncThunk(
   'auth/login',
   async (credentials, { rejectWithValue }) => {
     try {
       const response = await authAPI.login(credentials);
-      localStorage.setItem('token', response.token);
-      localStorage.setItem('user', JSON.stringify(response.user));
+      if (!response?.token || !response?.user) {
+        throw new Error('Invalid response format');
+      }
+      saveAuthData(response.token, response.user);
       return response;
     } catch (error) {
       return rejectWithValue(error.response?.data || { message: error.message });
@@ -21,8 +44,10 @@ export const register = createAsyncThunk(
   async (userData, { rejectWithValue }) => {
     try {
       const response = await authAPI.register(userData);
-      localStorage.setItem('token', response.token);
-      localStorage.setItem('user', JSON.stringify(response.user));
+      if (!response?.token || !response?.user) {
+        throw new Error('Invalid response format');
+      }
+      saveAuthData(response.token, response.user);
       return response;
     } catch (error) {
       return rejectWithValue(error.response?.data || { message: error.message });
@@ -32,11 +57,15 @@ export const register = createAsyncThunk(
 
 export const logout = createAsyncThunk(
   'auth/logout',
-  async () => {
-    await authAPI.logout();
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    return null;
+  async (_, { rejectWithValue }) => {
+    try {
+      await authAPI.logout();
+      clearAuthData();
+      return null;
+    } catch (error) {
+      clearAuthData();
+      return rejectWithValue(error.response?.data || { message: error.message });
+    }
   }
 );
 
@@ -44,56 +73,62 @@ export const checkAuthStatus = createAsyncThunk(
   'auth/checkStatus',
   async (_, { rejectWithValue }) => {
     try {
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem(AUTH_TOKEN_KEY);
       if (!token) throw new Error('No token found');
       
-      const response = await authAPI.validateToken();
-      return {
-        user: response.user,
-        token
-      };
+      const response = await authAPI.validateToken(token);
+      if (!response?.user) throw new Error('Invalid user data');
+      
+      return { user: response.user, token };
     } catch (error) {
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
+      clearAuthData();
       return rejectWithValue(error.response?.data || { message: error.message });
     }
   }
 );
 
-// Get initial state from localStorage if available
-const getInitialState = () => {
-  const token = localStorage.getItem('token');
-  const user = localStorage.getItem('user');
-  
-  return {
-    user: user ? JSON.parse(user) : null,
-    token: token || null,
-    isAuthenticated: !!token,
-    isLoading: false,
-    error: null
-  };
+const loadInitialState = () => {
+  try {
+    const token = localStorage.getItem(AUTH_TOKEN_KEY);
+    const userStr = localStorage.getItem(AUTH_USER_KEY);
+    const user = userStr ? JSON.parse(userStr) : null;
+    
+    if (!token || !user) {
+      clearAuthData();
+      return initialState;
+    }
+    
+    return {
+      ...initialState,
+      user,
+      token,
+      isAuthenticated: true
+    };
+  } catch {
+    clearAuthData();
+    return initialState;
+  }
 };
 
 const authSlice = createSlice({
   name: 'auth',
-  initialState: getInitialState(),
+  initialState: loadInitialState(),
   reducers: {
     clearError: (state) => {
       state.error = null;
     },
     updateUserPreferences: (state, action) => {
-      if (state.user) {
+      if (state.user && action.payload) {
         state.user.preferences = {
           ...state.user.preferences,
           ...action.payload
         };
-        localStorage.setItem('user', JSON.stringify(state.user));
+        localStorage.setItem(AUTH_USER_KEY, JSON.stringify(state.user));
       }
     }
   },
   extraReducers: (builder) => {
     builder
-      // Login cases
       .addCase(login.pending, (state) => {
         state.isLoading = true;
         state.error = null;
@@ -103,13 +138,13 @@ const authSlice = createSlice({
         state.isAuthenticated = true;
         state.user = action.payload.user;
         state.token = action.payload.token;
+        state.error = null;
       })
       .addCase(login.rejected, (state, action) => {
         state.isLoading = false;
-        state.error = action.payload?.message || 'Login failed';
+        state.error = action.payload?.message || 'Authentication failed';
+        state.isAuthenticated = false;
       })
-      
-      // Register cases
       .addCase(register.pending, (state) => {
         state.isLoading = true;
         state.error = null;
@@ -119,45 +154,35 @@ const authSlice = createSlice({
         state.isAuthenticated = true;
         state.user = action.payload.user;
         state.token = action.payload.token;
+        state.error = null;
       })
       .addCase(register.rejected, (state, action) => {
         state.isLoading = false;
         state.error = action.payload?.message || 'Registration failed';
+        state.isAuthenticated = false;
       })
-      
-      // Logout cases
       .addCase(logout.pending, (state) => {
         state.isLoading = true;
       })
       .addCase(logout.fulfilled, (state) => {
-        state.isLoading = false;
-        state.isAuthenticated = false;
-        state.user = null;
-        state.token = null;
+        Object.assign(state, initialState);
       })
       .addCase(logout.rejected, (state) => {
-        state.isLoading = false;
-        // We still logout the user even if API call fails
-        state.isAuthenticated = false;
-        state.user = null;
-        state.token = null;
+        Object.assign(state, initialState);
       })
-      
-      // Check auth status cases
       .addCase(checkAuthStatus.pending, (state) => {
         state.isLoading = true;
+        state.error = null;
       })
       .addCase(checkAuthStatus.fulfilled, (state, action) => {
         state.isLoading = false;
         state.isAuthenticated = true;
         state.user = action.payload.user;
         state.token = action.payload.token;
+        state.error = null;
       })
       .addCase(checkAuthStatus.rejected, (state) => {
-        state.isLoading = false;
-        state.isAuthenticated = false;
-        state.user = null;
-        state.token = null;
+        Object.assign(state, initialState);
       });
   }
 });

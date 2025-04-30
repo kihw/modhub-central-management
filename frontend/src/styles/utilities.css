@@ -2,10 +2,9 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Utilitaires personnalisés */
 @layer utilities {
   .text-shadow {
-    text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.3);
+    text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.25);
   }
 
   .scrollbar-hide {
@@ -22,10 +21,36 @@
   }
 
   .absolute-center {
-    @apply absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2;
+    @apply absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2;
   }
 
   .transition-standard {
     @apply transition-all duration-300 ease-in-out;
+  }
+
+  .glass-effect {
+    @apply bg-opacity-20 backdrop-blur-sm;
+  }
+
+  .hover-scale {
+    @apply hover:scale-105 transition-transform;
+  }
+
+  .focus-ring {
+    @apply focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2;
+  }
+
+  .grid-auto-fit {
+    @apply grid grid-cols-[repeat(auto-fit,minmax(250px,1fr))] gap-4;
+  }
+
+  .no-tap-highlight {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .gpu-accelerated {
+    transform: translateZ(0);
+    backface-visibility: hidden;
+    perspective: 1000;
   }
 }

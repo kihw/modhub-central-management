@@ -1,28 +1,41 @@
 import { configureStore } from '@reduxjs/toolkit';
-import { persistStore, persistReducer } from 'redux-persist';
+import { persistStore, persistReducer, FLUSH, REHYDRATE, PAUSE, PERSIST, PURGE, REGISTER } from 'redux-persist';
 import storage from 'redux-persist/lib/storage';
-import thunk from 'redux-thunk';
 import rootReducer from './rootReducer';
 
 const persistConfig = {
-  key: 'root',
+  key: 'modhub-central',
   storage,
-  whitelist: ['settings', 'theme'], // Persistez uniquement ces reducers
+  whitelist: ['settings', 'theme', 'mods', 'rules'],
+  version: 1,
+  timeout: 2000,
+  migrate: (state) => Promise.resolve(state),
+  blacklist: ['temp', 'cache'],
+  debug: process.env.NODE_ENV === 'development',
 };
 
 const persistedReducer = persistReducer(persistConfig, rootReducer);
 
-export const store = configureStore({
+const store = configureStore({
   reducer: persistedReducer,
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({
       serializableCheck: {
-        ignoredActions: ['persist/PERSIST', 'persist/REHYDRATE'],
+        ignoredActions: [FLUSH, REHYDRATE, PAUSE, PERSIST, PURGE, REGISTER],
+        warnAfter: 128,
+        ignoreState: false,
       },
-    }).concat(thunk),
-  devTools: process.env.NODE_ENV !== 'production',
+      immutableCheck: { warnAfter: 128 },
+    }),
+  devTools: process.env.NODE_ENV === 'development',
 });
 
-export const persistor = persistStore(store);
+const persistor = persistStore(store, undefined, () => {
+  store.dispatch({ type: 'PERSIST_LOADED' });
+});
 
-export default { store, persistor };
+export type RootState = ReturnType<typeof store.getState>;
+export type AppDispatch = typeof store.dispatch;
+
+export { store, persistor };
+export default store;

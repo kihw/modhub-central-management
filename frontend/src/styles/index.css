@@ -2,7 +2,74 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Import des autres fichiers CSS */
-@import "./base.css";
-@import "./components.css";
-@import "./utilities.css";
+@layer base {
+  :root {
+    --color-primary: #2563eb;
+    --color-secondary: #475569;
+    --color-background: #ffffff;
+    --color-text: #1f2937;
+    --color-success: #22c55e;
+    --color-warning: #f59e0b;
+    --color-error: #ef4444;
+    
+    --color-primary-hover: #1d4ed8;
+    --color-secondary-hover: #334155;
+    --color-success-hover: #16a34a;
+  }
+
+  body {
+    @apply bg-background text-text antialiased min-h-screen min-w-[320px] overflow-x-hidden;
+  }
+}
+
+@layer components {
+  .btn {
+    @apply inline-flex items-center justify-center px-4 py-2 rounded-md transition-colors duration-200 font-medium focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed select-none;
+  }
+  
+  .btn-primary {
+    @apply bg-primary text-white hover:bg-[var(--color-primary-hover)] focus:ring-primary/50 active:scale-[0.98];
+  }
+
+  .btn-secondary {
+    @apply bg-secondary text-white hover:bg-[var(--color-secondary-hover)] focus:ring-secondary/50 active:scale-[0.98];
+  }
+
+  .btn-success {
+    @apply bg-success text-white hover:bg-[var(--color-success-hover)] focus:ring-success/50 active:scale-[0.98];
+  }
+
+  .card {
+    @apply rounded-lg shadow-md bg-white p-4 transition-all duration-200 hover:shadow-lg border border-gray-100;
+  }
+
+  .input {
+    @apply w-full px-3 py-2 border border-gray-300 rounded-md transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+    &::-webkit-scrollbar {
+      display: none;
+    }
+  }
+
+  .grid-auto-fit {
+    grid-template-columns: repeat(auto-fit, minmax(min(250px, 100%), 1fr));
+  }
+
+  .link-hover {
+    @apply transition-colors duration-200 hover:text-primary/80;
+  }
+  
+  .focus-ring {
+    @apply focus:outline-none focus:ring-2 focus:ring-primary/50 focus:ring-offset-2;
+  }
+}
