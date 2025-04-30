@@ -132,9 +132,18 @@ class ApplicationInitializer:
             openapi_url="/openapi.json" if settings.DEBUG else None
         )
 
+        # Enable CORS - added this section to fix cross-origin issues
+        origins = [
+            "http://localhost:3000",  # React dev server
+            "http://localhost:8000",  # Frontend production/served
+            "http://127.0.0.1:3000",
+            "http://127.0.0.1:8000",
+            # Add any other origins that need access
+        ]
+        
         app.add_middleware(
             CORSMiddleware,
-            allow_origins=settings.get_cors_origins(),
+            allow_origins=origins,
             allow_credentials=True,
             allow_methods=["*"],
             allow_headers=["*"],
