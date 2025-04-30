@@ -1,7 +1,7 @@
 // src/context/BackendContext.jsx
-import React, { createContext, useState, useEffect, useContext } from 'react';
-import axios from 'axios';
-import useIsMounted from '../hooks/useIsMounted';
+import React, { createContext, useState, useEffect, useContext } from "react";
+import axios from "axios";
+import useIsMounted from "../hooks/useIsMounted";
 
 const BackendContext = createContext();
 
@@ -18,17 +18,21 @@ export const BackendProvider = ({ children }) => {
   const isMounted = useIsMounted();
 
   // Définition de l'URL de l'API - corrigée pour utiliser le port 8668
-  const API_BASE_URL = process.env.NODE_ENV === 'development' 
-    ? '/api' // En dev, on utilise le proxy configuré dans package.json ou vite.config
-    : 'http://localhost:8668/api'; // En prod, on utilise l'URL directe
+  const API_BASE_URL =
+    process.env.NODE_ENV === "development"
+      ? "/api" // En dev, on utilise le proxy configuré dans package.json ou vite.config
+      : "http://localhost:8668/api"; // En prod, on utilise l'URL directe
 
   // Create axios instance with base URL
+
   const axiosInstance = axios.create({
-    baseURL: API_BASE_URL,
+    baseURL: process.env.NODE_ENV === "development"
+      ? "http://localhost:8668/api"
+      : "/api",
     timeout: 5000,
     headers: {
-      'Content-Type': 'application/json',
-    }
+      "Content-Type": "application/json",
+    },
   });
 
   useEffect(() => {
@@ -36,37 +40,33 @@ export const BackendProvider = ({ children }) => {
     let isPolling = false;
 
     const checkBackendStatus = async () => {
-      if (isPolling) return; // Prevent concurrent requests
-      
+      if (isPolling) return;
       isPolling = true;
-      
+
       try {
         if (isMounted.current) {
-          setStatus(prev => ({ ...prev, isChecking: true }));
+          setStatus((prev) => ({ ...prev, isChecking: true }));
         }
-        
-        // Use a direct status endpoint with a short timeout
-        const response = await axiosInstance.get('/status');
-        
+
+        const response = await axiosInstance.get("/status");
+
         if (isMounted.current) {
           setStatus({
             isConnected: true,
             isChecking: false,
             lastChecked: new Date(),
-            version: response.data.version || 'unknown',
+            version: response.data.version || "unknown",
             error: null,
           });
-          console.log("Backend connection successful:", response.data);
         }
       } catch (error) {
         if (isMounted.current) {
-          console.error("Backend connection error:", error.message);
           setStatus({
             isConnected: false,
             isChecking: false,
             lastChecked: new Date(),
             version: null,
-            error: error.message || 'Failed to connect to backend',
+            error: error.message || "Failed to connect to backend",
           });
         }
       } finally {
@@ -80,11 +80,11 @@ export const BackendProvider = ({ children }) => {
     // Set up polling with a safer approach
     const setupNextPoll = () => {
       if (!isMounted.current) return;
-      
+
       const interval = status.isConnected ? 30000 : 10000;
       timeoutId = setTimeout(() => {
         if (!isMounted.current) return;
-        
+
         if (!status.isConnected) {
           console.log("Retrying backend connection...");
         }
@@ -95,7 +95,7 @@ export const BackendProvider = ({ children }) => {
     };
 
     setupNextPoll();
-    
+
     // Cleanup function
     return () => {
       if (timeoutId) {
@@ -106,22 +106,22 @@ export const BackendProvider = ({ children }) => {
 
   const reconnect = async () => {
     if (!isMounted.current) return false;
-    
-    setStatus(prev => ({ ...prev, isChecking: true }));
-    
+
+    setStatus((prev) => ({ ...prev, isChecking: true }));
+
     try {
       console.log("Manually reconnecting to backend...");
-      const response = await axiosInstance.get('/status');
-      
+      const response = await axiosInstance.get("/status");
+
       if (isMounted.current) {
         setStatus({
           isConnected: true,
           isChecking: false,
           lastChecked: new Date(),
-          version: response.data.version || 'unknown',
+          version: response.data.version || "unknown",
           error: null,
         });
-        
+
         console.log("Manual reconnection successful");
       }
       return true;
@@ -133,7 +133,7 @@ export const BackendProvider = ({ children }) => {
           isChecking: false,
           lastChecked: new Date(),
           version: null,
-          error: error.message || 'Failed to connect to backend',
+          error: error.message || "Failed to connect to backend",
         });
       }
       return false;
@@ -143,19 +143,23 @@ export const BackendProvider = ({ children }) => {
   // Provide the API client to components
   const apiClient = {
     get: (endpoint, config) => axiosInstance.get(endpoint, config),
-    post: (endpoint, data, config) => axiosInstance.post(endpoint, data, config),
+    post: (endpoint, data, config) =>
+      axiosInstance.post(endpoint, data, config),
     put: (endpoint, data, config) => axiosInstance.put(endpoint, data, config),
-    patch: (endpoint, data, config) => axiosInstance.patch(endpoint, data, config),
+    patch: (endpoint, data, config) =>
+      axiosInstance.patch(endpoint, data, config),
     delete: (endpoint, config) => axiosInstance.delete(endpoint, config),
   };
 
   return (
-    <BackendContext.Provider value={{ 
-      ...status, 
-      reconnect,
-      apiClient,
-      backendUrl: API_BASE_URL
-    }}>
+    <BackendContext.Provider
+      value={{
+        ...status,
+        reconnect,
+        apiClient,
+        backendUrl: API_BASE_URL,
+      }}
+    >
       {children}
     </BackendContext.Provider>
   );

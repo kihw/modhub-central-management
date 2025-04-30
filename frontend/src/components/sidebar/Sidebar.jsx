@@ -7,7 +7,7 @@ import {
   FaCog,
   FaHistory,
   FaTachometerAlt,
-  FaExclamationTriangle
+  FaExclamationTriangle,
 } from "react-icons/fa";
 import { NavLink } from "react-router-dom";
 import logo from "../../assets/modhub-logo.png";
@@ -22,25 +22,26 @@ const Sidebar = (props) => {
 
   useEffect(() => {
     // Fetch active mods count from API with error handling
+
     const fetchActiveModsCount = async () => {
       setIsLoading(true);
       try {
-        // Using relative path to avoid CORS issues
-        const response = await axios.get("/api/mods/active/count", {
-          // Set timeout and handle errors appropriately
+        const response = await axios.get("/mods/active/count", {
+          baseURL: process.env.NODE_ENV === "development" 
+            ? "http://localhost:8668/api" // Suppression du double "/api"
+            : "/api",
           timeout: 5000,
           headers: {
             "Content-Type": "application/json",
-            "Accept": "application/json"
-          }
+            Accept: "application/json",
+          },
         });
-        
+
         setActiveModCount(response.data.active_count);
         setFetchError(false);
       } catch (error) {
         console.error("Failed to fetch active mods count:", error);
         setFetchError(true);
-        // Fallback value for active mods if fetch fails
         setActiveModCount(0);
       } finally {
         setIsLoading(false);
@@ -48,7 +49,7 @@ const Sidebar = (props) => {
     };
 
     fetchActiveModsCount();
-    
+
     // Set interval for periodic updates with cleanup
     const interval = setInterval(fetchActiveModsCount, 10000); // Update every 10 seconds
 
@@ -92,7 +93,9 @@ const Sidebar = (props) => {
 
       <div className="p-4 mb-2">
         <div
-          className={`${fetchError ? "bg-red-800" : "bg-green-800"} rounded-lg p-2 ${
+          className={`${
+            fetchError ? "bg-red-800" : "bg-green-800"
+          } rounded-lg p-2 ${
             collapsed ? "text-center" : "flex justify-between items-center"
           }`}
         >

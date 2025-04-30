@@ -120,14 +120,12 @@ async def apply_mod(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to apply mod"
         )
+    
+@router.get("/active/count", response_model=int)
+async def get_active_mods_count(db: Session = Depends(get_db)) -> int:
+    return len([mod for mod in get_mods(db, active=True)])
 
-@router.get("/active/count")
-async def get_active_mods_count(db: Session = Depends(get_db)) -> dict:
-    try:
-        return {"active_count": len(get_mods(db, active=True))}
-    except Exception as e:
-        logger.error(f"Error counting active mods: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to count active mods"
-        )
+
+@router.get("/active/count", response_model=int)
+async def get_active_mods_count(db: Session = Depends(get_db)) -> int:
+    return len([mod for mod in get_mods(db, active=True)])

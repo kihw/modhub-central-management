@@ -76,13 +76,14 @@ const ApiService = {
     try {
       const config = { params };
       const isGetOrDelete = ['get', 'delete'].includes(method.toLowerCase());
-      const response = await apiClient[method.toLowerCase()](
-        endpoint,
-        isGetOrDelete ? config : data,
-        isGetOrDelete ? undefined : config
-      );
-      return response.data;
-    } catch (error) {
+      fetchActiveModsCount = async () => {
+        try {
+          const response = await ApiService.request("get", "mods/active/count");
+          this.setState({ activeModsCount: response.data.count });
+        } catch (error) {
+          console.error("Failed to fetch active mods count:", error);
+        }
+      };
       if (error.message?.includes('Network Error') && retryCount < MAX_RETRIES) {
         const delay = RETRY_DELAY_BASE * (2 ** retryCount);
         await new Promise(resolve => setTimeout(resolve, delay));

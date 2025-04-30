@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Generator, AsyncGenerator
 from contextlib import contextmanager, asynccontextmanager
 
+
 from sqlalchemy import create_engine, event, Engine
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import sessionmaker, Session, declarative_base
@@ -58,7 +59,7 @@ if settings.DB_TYPE == "sqlite":
         except Exception as e:
             # Log the error but don't crash
             logging.warning(f"Failed to set SQLite pragmas: {e}")
-    
+
 # Create sync and async engines
 engine = create_engine(DATABASE_URL, **engine_config, **sqlite_config)
 async_engine = create_async_engine(ASYNC_DATABASE_URL, **engine_config)
