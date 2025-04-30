@@ -1,37 +1,51 @@
-# Dans backend/core/process_management/advanced_monitor.py
-
+# backend/core/resource_monitor.py
 import psutil
 import logging
-from typing import Dict, List, Optional, Callable, Set, Tuple
+from typing import Dict, List, Optional, Callable, Set, Tuple, Any, Union
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from queue import Queue
 import threading
 import time
+import os
 import re
-from weakref import WeakValueDictionary
+from collections import deque
 
 logger = logging.getLogger(__name__)
 
-@dataclass(frozen=True)
-class ProcessInfo:
-    pid: int
-    name: str
-    exe_path: Optional[str] = None
-    start_time: datetime = field(default_factory=datetime.now)
-    cpu_usage: float = 0.0
+@dataclass
+class ResourceUsage:
+    """Class to store system resource usage metrics"""
+    timestamp: datetime = field(default_factory=datetime.now)
+    cpu_percent: float = 0.0
     memory_usage: float = 0.0
-    io_read_bytes: int = 0
-    io_write_bytes: int = 0
-    threads_count: int = 0
-    status: str = 'running'
-    parent_pid: Optional[int] = None
-    cmdline: tuple[str, ...] = field(default_factory=tuple)
-    tags: frozenset[str] = field(default_factory=frozenset)
-    is_monitored: bool = False
-    last_updated: datetime = field(default_factory=datetime.now)
+    disk_usage: float = 0.0
+    total_memory: int = 0
+    available_memory: int = 0
+    total_disk: int = 0
+    available_disk: int = 0
+    processes_count: int = 0
+    temperature: List[Dict[str, Any]] = field(default_factory=list)
+    gpu_usage: List[Dict[str, Any]] = field(default_factory=list)
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert resource usage to a dictionary"""
+        return {
+            "timestamp": self.timestamp.isoformat(),
+            "cpu_percent": self.cpu_percent,
+            "memory_usage": self.memory_usage,
+            "disk_usage": self.disk_usage,
+            "total_memory": self.total_memory,
+            "available_memory": self.available_memory,
+            "total_disk": self.total_disk,
+            "available_disk": self.available_disk,
+            "processes_count": self.processes_count,
+            "temperature": self.temperature,
+            "gpu_usage": self.gpu_usage
+        }
 
-class AdvancedProcessMonitor:
+class SystemResourceMonitor:
+    """Monitor system resource usage over time"""
     _instance = None
     
     def __new__(cls, *args, **kwargs):
@@ -42,49 +56,239 @@ class AdvancedProcessMonitor:
     
     def __init__(
         self, 
-        scan_interval: float = 5.0, 
-        max_tracked_processes: int = 500,
-        resource_threshold_cpu: float = 70.0,
-        resource_threshold_memory: float = 80.0
+        interval: float = 5.0, 
+        history_length: int = 100,
+        thresholds: Optional[Dict[str, float]] = None
     ):
-        # Éviter la réinitialisation si déjà initialisé (singleton)
+        # Avoid re-initialization (singleton pattern)
         if hasattr(self, '_initialized') and self._initialized:
             return
             
-        # Définir les catégories de processus
-        self.PROCESS_CATEGORIES = (
-            {'pattern': r'steam\.exe|origin\.exe|epicgames\.exe|game|unity\.exe', 'tag': 'gaming'},
-            {'pattern': r'vlc\.exe|spotify\.exe|netflix\.exe|media|player|audio', 'tag': 'media'},
-            {'pattern': r'code\.exe|idea64\.exe|pycharm64\.exe|dev|studio|compiler', 'tag': 'development'}
-        )
-        
-        # Initialiser les attributs
-        self._tracked_processes = WeakValueDictionary()
-        self._monitored_callbacks: Dict[str, Set[Callable]] = {}
-        self._scan_interval = max(0.1, min(scan_interval, 60.0))
-        self._max_tracked_processes = max(10, min(max_tracked_processes, 1000))
-        self._resource_thresholds = {
-            'cpu': min(100.0, max(0.0, resource_threshold_cpu)),
-            'memory': min(100.0, max(0.0, resource_threshold_memory))
+        self._interval = max(1.0, interval)
+        self._history_length = max(10, min(10000, history_length))
+        self._resource_history = deque(maxlen=self._history_length)
+        self._critical_events = deque(maxlen=1000)
+        self._peak_metrics = {
+            'cpu_peak': 0.0,
+            'memory_peak': 0.0,
+            'disk_peak': 0.0,
+            'gpu_peak': 0.0
         }
-        self._monitoring_thread: Optional[threading.Thread] = None
+        self._thresholds = thresholds or {
+            'cpu': 80.0,
+            'memory': 80.0,
+            'disk': 90.0,
+            'temperature': 80.0
+        }
+        self._monitoring_thread = None
         self._stop_event = threading.Event()
-        self._event_queue: Queue = Queue(maxsize=1000)
-        self._process_patterns = {cat['tag']: re.compile(cat['pattern'], re.IGNORECASE) for cat in self.PROCESS_CATEGORIES}
-        self._initialized = True
-        self._is_monitoring_active = False
         self._lock = threading.RLock()
+        self._initialized = True
         
-        logger.info("AdvancedProcessMonitor initialized")
-
-    def start_monitoring(self) -> bool:
+        logger.info("SystemResourceMonitor initialized")
+    
+    def _collect_system_metrics(self) -> ResourceUsage:
+        """Collect current system resource metrics"""
+        try:
+            # Get CPU usage
+            cpu_percent = psutil.cpu_percent(interval=0.1)
+            
+            # Get memory usage
+            memory = psutil.virtual_memory()
+            memory_percent = memory.percent
+            
+            # Get disk usage (root or home directory)
+            try:
+                disk_path = os.path.expanduser('~')
+                disk = psutil.disk_usage(disk_path)
+                disk_percent = disk.percent
+                total_disk = disk.total
+                available_disk = disk.free
+            except:
+                # Fallback to root directory
+                try:
+                    disk = psutil.disk_usage('/')
+                    disk_percent = disk.percent
+                    total_disk = disk.total
+                    available_disk = disk.free
+                except:
+                    disk_percent = 0.0
+                    total_disk = 0
+                    available_disk = 0
+            
+            # Get process count
+            processes_count = len(list(psutil.process_iter()))
+            
+            # Get temperature information
+            temperatures = self._collect_temperatures()
+            
+            # Get GPU usage information
+            gpu_usage = self._collect_gpu_metrics()
+            
+            # Create ResourceUsage object
+            resource_usage = ResourceUsage(
+                timestamp=datetime.now(),
+                cpu_percent=cpu_percent,
+                memory_usage=memory_percent,
+                disk_usage=disk_percent,
+                total_memory=memory.total,
+                available_memory=memory.available,
+                total_disk=total_disk,
+                available_disk=available_disk,
+                processes_count=processes_count,
+                temperature=temperatures,
+                gpu_usage=gpu_usage
+            )
+            
+            # Update peak metrics
+            self._update_peak_metrics(resource_usage)
+            
+            # Check for critical resource usage
+            self._check_critical_thresholds(resource_usage)
+            
+            return resource_usage
+            
+        except Exception as e:
+            logger.error(f"Error collecting system metrics: {e}")
+            return ResourceUsage()
+    
+    def _collect_temperatures(self) -> List[Dict[str, Any]]:
+        """Collect temperature information from system sensors"""
+        temperatures = []
+        try:
+            if hasattr(psutil, "sensors_temperatures"):
+                temps = psutil.sensors_temperatures()
+                if temps:
+                    for name, entries in temps.items():
+                        for entry in entries:
+                            if hasattr(entry, "current") and entry.current is not None:
+                                temperatures.append({
+                                    "sensor": name,
+                                    "label": entry.label or "Unknown",
+                                    "temperature": entry.current,
+                                    "high": entry.high if hasattr(entry, "high") else None,
+                                    "critical": entry.critical if hasattr(entry, "critical") else None
+                                })
+        except Exception as e:
+            logger.debug(f"Error collecting temperature data: {e}")
+        
+        return temperatures
+    
+    def _collect_gpu_metrics(self) -> List[Dict[str, Any]]:
+        """Collect GPU metrics if available"""
+        gpu_metrics = []
+        
+        # Try importing and using GPUtil for NVIDIA GPUs
+        try:
+            import GPUtil
+            gpus = GPUtil.getGPUs()
+            for i, gpu in enumerate(gpus):
+                gpu_metrics.append({
+                    "id": i,
+                    "name": gpu.name,
+                    "load": gpu.load * 100,  # Convert to percentage
+                    "memory_usage": gpu.memoryUtil * 100,  # Convert to percentage
+                    "temperature": gpu.temperature,
+                    "memory_total": gpu.memoryTotal,
+                    "memory_used": gpu.memoryUsed
+                })
+        except:
+            # GPUtil not available or no NVIDIA GPUs
+            pass
+        
+        return gpu_metrics
+    
+    def _update_peak_metrics(self, resource_usage: ResourceUsage) -> None:
+        """Update peak resource metrics"""
         with self._lock:
-            if self._is_monitoring_active:
-                logger.info("Process monitoring is already running")
-                return True
+            self._peak_metrics['cpu_peak'] = max(self._peak_metrics['cpu_peak'], resource_usage.cpu_percent)
+            self._peak_metrics['memory_peak'] = max(self._peak_metrics['memory_peak'], resource_usage.memory_usage)
+            self._peak_metrics['disk_peak'] = max(self._peak_metrics['disk_peak'], resource_usage.disk_usage)
+            
+            # Update GPU peak if available
+            if resource_usage.gpu_usage:
+                max_gpu_load = max((gpu.get('load', 0) for gpu in resource_usage.gpu_usage), default=0)
+                self._peak_metrics['gpu_peak'] = max(self._peak_metrics['gpu_peak'], max_gpu_load)
+    
+    def _check_critical_thresholds(self, resource_usage: ResourceUsage) -> None:
+        """Check if resource usage exceeds critical thresholds"""
+        critical_events = []
+        
+        # Check CPU usage
+        if resource_usage.cpu_percent >= self._thresholds.get('cpu', 80.0):
+            critical_events.append({
+                "type": "cpu",
+                "value": resource_usage.cpu_percent,
+                "threshold": self._thresholds.get('cpu', 80.0),
+                "timestamp": resource_usage.timestamp.isoformat(),
+                "message": f"CPU usage ({resource_usage.cpu_percent:.1f}%) exceeded threshold ({self._thresholds.get('cpu', 80.0):.1f}%)"
+            })
+        
+        # Check memory usage
+        if resource_usage.memory_usage >= self._thresholds.get('memory', 80.0):
+            critical_events.append({
+                "type": "memory",
+                "value": resource_usage.memory_usage,
+                "threshold": self._thresholds.get('memory', 80.0),
+                "timestamp": resource_usage.timestamp.isoformat(),
+                "message": f"Memory usage ({resource_usage.memory_usage:.1f}%) exceeded threshold ({self._thresholds.get('memory', 80.0):.1f}%)"
+            })
+        
+        # Check disk usage
+        if resource_usage.disk_usage >= self._thresholds.get('disk', 90.0):
+            critical_events.append({
+                "type": "disk",
+                "value": resource_usage.disk_usage,
+                "threshold": self._thresholds.get('disk', 90.0),
+                "timestamp": resource_usage.timestamp.isoformat(),
+                "message": f"Disk usage ({resource_usage.disk_usage:.1f}%) exceeded threshold ({self._thresholds.get('disk', 90.0):.1f}%)"
+            })
+        
+        # Check temperature
+        for temp in resource_usage.temperature:
+            if temp.get('temperature', 0) >= self._thresholds.get('temperature', 80.0):
+                critical_events.append({
+                    "type": "temperature",
+                    "value": temp.get('temperature', 0),
+                    "threshold": self._thresholds.get('temperature', 80.0),
+                    "sensor": temp.get('sensor', 'Unknown'),
+                    "label": temp.get('label', 'Unknown'),
+                    "timestamp": resource_usage.timestamp.isoformat(),
+                    "message": f"Temperature ({temp.get('temperature', 0):.1f}°C) for {temp.get('label', 'Unknown')} exceeded threshold ({self._thresholds.get('temperature', 80.0):.1f}°C)"
+                })
+        
+        # Add critical events to the queue
+        if critical_events:
+            with self._lock:
+                for event in critical_events:
+                    self._critical_events.append(event)
+    
+    def _monitoring_loop(self) -> None:
+        """Main monitoring loop"""
+        logger.info("Resource monitoring loop started")
+        
+        while not self._stop_event.is_set():
+            try:
+                # Collect resource metrics
+                resource_usage = self._collect_system_metrics()
                 
+                # Add to history
+                with self._lock:
+                    self._resource_history.append(resource_usage)
+                
+                # Wait for next interval
+                self._stop_event.wait(self._interval)
+                
+            except Exception as e:
+                logger.error(f"Error in resource monitoring loop: {e}")
+                # Shorter wait on error
+                self._stop_event.wait(max(1.0, self._interval / 2))
+    
+    def start_monitoring(self) -> bool:
+        """Start the resource monitoring thread"""
+        with self._lock:
             if self._monitoring_thread and self._monitoring_thread.is_alive():
-                logger.info("Process monitoring thread is already running")
+                logger.info("Resource monitoring is already running")
                 return True
             
             try:
@@ -92,340 +296,119 @@ class AdvancedProcessMonitor:
                 self._monitoring_thread = threading.Thread(
                     target=self._monitoring_loop,
                     daemon=True,
-                    name="ProcessMonitor"
+                    name="ResourceMonitor"
                 )
                 self._monitoring_thread.start()
-                self._is_monitoring_active = True
-                logger.info("Process monitoring started")
+                logger.info("Resource monitoring started")
                 return True
             except Exception as e:
-                logger.error(f"Failed to start process monitoring: {e}")
-                self._is_monitoring_active = False
+                logger.error(f"Failed to start resource monitoring: {e}")
                 return False
-
+    
     def stop_monitoring(self) -> bool:
+        """Stop the resource monitoring thread"""
         with self._lock:
-            if not self._is_monitoring_active:
-                logger.info("Process monitoring is not running")
+            if not self._monitoring_thread or not self._monitoring_thread.is_alive():
+                logger.info("Resource monitoring is not running")
                 return True
-                
+            
             try:
                 self._stop_event.set()
-                if self._monitoring_thread and self._monitoring_thread.is_alive():
-                    self._monitoring_thread.join(timeout=5)
-                    if self._monitoring_thread.is_alive():
-                        logger.warning("Process monitoring thread did not terminate properly")
-                
-                self._is_monitoring_active = False
-                self._tracked_processes.clear()
-                logger.info("Process monitoring stopped")
+                self._monitoring_thread.join(timeout=5)
+                if self._monitoring_thread.is_alive():
+                    logger.warning("Resource monitoring thread did not terminate properly")
+                logger.info("Resource monitoring stopped")
                 return True
             except Exception as e:
-                logger.error(f"Error stopping process monitoring: {e}")
+                logger.error(f"Error stopping resource monitoring: {e}")
                 return False
-
-    def is_monitoring(self) -> bool:
-        """Vérifier si le monitoring est actif"""
-        return self._is_monitoring_active and self._monitoring_thread and self._monitoring_thread.is_alive()
-
-    def _monitoring_loop(self) -> None:
-        """Boucle principale de surveillance des processus"""
-        logger.info("Process monitoring loop started")
-        last_full_scan_time = 0
-        
-        while not self._stop_event.is_set():
-            try:
-                current_time = time.time()
-                
-                # Scan complet toutes les scan_interval secondes
-                if current_time - last_full_scan_time >= self._scan_interval:
-                    self._scan_processes()
-                    last_full_scan_time = current_time
-                
-                # Traiter les événements en attente
-                self._process_events()
-                
-                # Vérifier les processus à haute utilisation
-                self._check_resource_thresholds()
-                
-                # Pause courte pour éviter une utilisation CPU élevée
-                time.sleep(0.2)
-                
-            except Exception as e:
-                logger.error(f"Monitoring error: {e}", exc_info=True)
-                time.sleep(max(1.0, self._scan_interval / 2))
-
-    def _scan_processes(self) -> None:
-        """Scanner tous les processus actifs"""
-        try:
-            current_processes = WeakValueDictionary()
-            
-            process_iter = list(psutil.process_iter(['pid', 'name', 'exe', 'status', 'cmdline']))
-            logger.debug(f"Found {len(process_iter)} running processes")
-            
-            for proc in process_iter:
-                if len(current_processes) >= self._max_tracked_processes:
-                    break
-                    
-                try:
-                    process_info = self._create_process_info(proc)
-                    if process_info:
-                        current_processes[process_info.pid] = process_info
-                except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess) as e:
-                    continue
-                except Exception as e:
-                    logger.warning(f"Error processing process {proc.pid}: {e}")
-            
-            # Mettre à jour la liste des processus suivis
-            self._tracked_processes = current_processes
-            logger.debug(f"Tracking {len(self._tracked_processes)} processes")
-            
-        except Exception as e:
-            logger.error(f"Process scan error: {e}", exc_info=True)
-
-    def _create_process_info(self, proc: psutil.Process) -> Optional[ProcessInfo]:
-        """Créer un objet ProcessInfo à partir d'un processus psutil"""
-        try:
-            proc_info = proc.info
-            
-            # Informations de base
-            pid = proc_info['pid']
-            name = proc_info.get('name', '')
-            if not name:
-                return None
-                
-            exe_path = proc_info.get('exe')
-            status = proc_info.get('status', 'unknown')
-            
-            # Convertir cmdline en tuple
-            cmdline = tuple(proc_info.get('cmdline', []))
-            
-            # Calculer les tags basés sur le nom du processus
-            tags = frozenset(self._categorize_process(name))
-            
-            # Créer l'objet ProcessInfo de base
-            process_info = ProcessInfo(
-                pid=pid,
-                name=name,
-                exe_path=exe_path,
-                status=status,
-                cmdline=cmdline,
-                tags=tags,
-                last_updated=datetime.now()
-            )
-
-            # Ajouter les métriques de ressources et autres informations détaillées
-            try:
-                with proc.oneshot():
-                    return ProcessInfo(
-                        **{**process_info.__dict__,
-                          'cpu_usage': proc.cpu_percent() or 0.0,
-                          'memory_usage': proc.memory_percent() or 0.0,
-                          'threads_count': proc.num_threads(),
-                          'start_time': datetime.fromtimestamp(proc.create_time()),
-                          'io_read_bytes': getattr(proc.io_counters(), 'read_bytes', 0) if hasattr(proc, 'io_counters') else 0,
-                          'io_write_bytes': getattr(proc.io_counters(), 'write_bytes', 0) if hasattr(proc, 'io_counters') else 0,
-                          'parent_pid': proc.parent().pid if proc.parent() else None}
-                    )
-            except (psutil.NoSuchProcess, psutil.AccessDenied):
-                # Retourner l'objet de base si les métriques détaillées échouent
-                return process_info
-                
-        except (psutil.NoSuchProcess, psutil.AccessDenied):
-            return None
-        except Exception as e:
-            logger.warning(f"Error creating process info for PID {proc.pid}: {e}")
-            return None
-
-    def _categorize_process(self, process_name: str) -> Set[str]:
-        """Catégoriser un processus en fonction de son nom"""
-        if not process_name:
-            return set()
-            
-        return {tag for tag, pattern in self._process_patterns.items() if pattern.search(process_name)}
-
-    def _check_resource_thresholds(self) -> None:
-        """Vérifier si les processus dépassent les seuils de ressources"""
-        try:
-            high_resource_processes = [
-                process for process in self._tracked_processes.values()
-                if (process.cpu_usage > self._resource_thresholds['cpu'] or
-                    process.memory_usage > self._resource_thresholds['memory'])
-            ]
-            
-            if high_resource_processes and not self._event_queue.full():
-                self._event_queue.put(('high_resource', tuple(high_resource_processes)))
-                logger.debug(f"Found {len(high_resource_processes)} high resource processes")
-        except Exception as e:
-            logger.error(f"Error checking resource thresholds: {e}")
-
-    def _process_events(self) -> None:
-        """Traiter les événements en attente dans la queue"""
-        try:
-            while not self._event_queue.empty():
-                event_type, data = self._event_queue.get_nowait()
-                if event_type == 'high_resource':
-                    self._handle_high_resource_processes(data)
-                self._event_queue.task_done()
-        except Exception as e:
-            logger.error(f"Error processing events: {e}")
-
-    def _handle_high_resource_processes(self, processes: tuple[ProcessInfo, ...]) -> None:
-        """Traiter les processus à haute utilisation de ressources"""
-        try:
-            for process in processes:
-                for callback_key, callbacks in self._monitored_callbacks.items():
-                    pattern, tag = callback_key.split(':')
-                    if (not pattern or re.search(pattern, process.name, re.IGNORECASE)) and \
-                    (not tag or tag in process.tags):
-                        for callback in callbacks:
-                            try:
-                                callback(process)
-                            except Exception as e:
-                                logger.error(f"Callback error for {process.name}: {e}")
-        except Exception as e:
-            logger.error(f"Error handling high resource processes: {e}")
-
-    def get_processes_by_tag(self, tag: str) -> tuple[ProcessInfo, ...]:
-        """Obtenir tous les processus avec un tag spécifique"""
-        if not tag:
-            return tuple()
-            
-        return tuple(proc for proc in self._tracked_processes.values() if tag in proc.tags)
-
-    def get_all_processes(self) -> tuple[ProcessInfo, ...]:
-        """Obtenir tous les processus suivis"""
-        return tuple(self._tracked_processes.values())
-
-    def get_process_by_name(self, name: str) -> tuple[ProcessInfo, ...]:
-        """Obtenir les processus par nom (correspondance partielle)"""
-        if not name:
-            return tuple()
-            
-        name_lower = name.lower()
-        return tuple(proc for proc in self._tracked_processes.values() 
-                    if name_lower in proc.name.lower())
-
-    def get_process_by_pid(self, pid: int) -> Optional[ProcessInfo]:
-        """Obtenir un processus par PID"""
-        return self._tracked_processes.get(pid)
-
-    def register_process_callback(
-        self, 
-        callback: Callable[[ProcessInfo], None],
-        process_name_pattern: str = '',
-        tag: str = ''
-    ) -> bool:
-        """Enregistrer un callback pour certains processus"""
-        if not callable(callback):
-            return False
-            
-        key = f"{process_name_pattern}:{tag}"
-        if key not in self._monitored_callbacks:
-            self._monitored_callbacks[key] = set()
-        self._monitored_callbacks[key].add(callback)
-        logger.info(f"Registered process callback for '{key}'")
-        return True
-
-    def unregister_process_callback(
-        self,
-        callback: Callable[[ProcessInfo], None],
-        process_name_pattern: str = '',
-        tag: str = ''
-    ) -> bool:
-        """Supprimer un callback enregistré"""
-        key = f"{process_name_pattern}:{tag}"
-        if key in self._monitored_callbacks and callback in self._monitored_callbacks[key]:
-            self._monitored_callbacks[key].remove(callback)
-            logger.info(f"Unregistered process callback for '{key}'")
-            
-            # Supprimer la clé si elle n'a plus de callbacks
-            if not self._monitored_callbacks[key]:
-                del self._monitored_callbacks[key]
-                
-            return True
-        return False
-        
-    def get_high_resource_processes(self, cpu_threshold: Optional[float] = None, memory_threshold: Optional[float] = None) -> tuple[ProcessInfo, ...]:
-        """Obtenir les processus à haute utilisation de ressources"""
-        cpu_limit = cpu_threshold if cpu_threshold is not None else self._resource_thresholds['cpu']
-        mem_limit = memory_threshold if memory_threshold is not None else self._resource_thresholds['memory']
-        
-        return tuple(
-            proc for proc in self._tracked_processes.values()
-            if proc.cpu_usage > cpu_limit or proc.memory_usage > mem_limit
-        )
     
-    def get_process_stats(self) -> Dict[str, Any]:
-        """Obtenir des statistiques sur les processus suivis"""
-        processes = list(self._tracked_processes.values())
-        
-        if not processes:
-            return {
-                "count": 0,
-                "total_cpu": 0.0,
-                "total_memory": 0.0,
-                "top_cpu": [],
-                "top_memory": [],
-                "by_tag": {}
+    def is_monitoring(self) -> bool:
+        """Check if monitoring is active"""
+        return self._monitoring_thread is not None and self._monitoring_thread.is_alive()
+    
+    def get_latest_usage(self) -> Optional[ResourceUsage]:
+        """Get the latest resource usage metrics"""
+        with self._lock:
+            if not self._resource_history:
+                return None
+            return self._resource_history[-1]
+    
+    def get_resource_history(
+        self, 
+        duration: Optional[timedelta] = None,
+        limit: Optional[int] = None
+    ) -> List[ResourceUsage]:
+        """Get resource usage history"""
+        with self._lock:
+            # Copy the resource history
+            history = list(self._resource_history)
+            
+            # Filter by duration if specified
+            if duration:
+                cutoff_time = datetime.now() - duration
+                history = [usage for usage in history if usage.timestamp >= cutoff_time]
+            
+            # Apply limit if specified
+            if limit and limit > 0:
+                history = history[-limit:]
+            
+            return history
+    
+    def get_peak_metrics(self) -> Dict[str, float]:
+        """Get peak resource metrics"""
+        with self._lock:
+            return dict(self._peak_metrics)
+    
+    def reset_peak_metrics(self) -> None:
+        """Reset peak resource metrics"""
+        with self._lock:
+            self._peak_metrics = {
+                'cpu_peak': 0.0,
+                'memory_peak': 0.0,
+                'disk_peak': 0.0,
+                'gpu_peak': 0.0
             }
+    
+    def get_critical_events(
+        self, 
+        duration: Optional[timedelta] = None
+    ) -> List[Dict[str, Any]]:
+        """Get critical resource events"""
+        with self._lock:
+            # Copy the critical events
+            events = list(self._critical_events)
+            
+            # Filter by duration if specified
+            if duration:
+                cutoff_time = datetime.now() - duration
+                events = [
+                    event for event in events 
+                    if datetime.fromisoformat(event['timestamp']) >= cutoff_time
+                ]
+            
+            return events
+    
+    def set_thresholds(self, thresholds: Dict[str, float]) -> bool:
+        """Set resource usage thresholds"""
+        if not isinstance(thresholds, dict):
+            return False
         
-        # Calculer les statistiques
-        total_cpu = sum(p.cpu_usage for p in processes)
-        total_memory = sum(p.memory_usage for p in processes)
-        
-        # Processus avec le plus d'utilisation CPU
-        top_cpu = sorted(processes, key=lambda p: p.cpu_usage, reverse=True)[:5]
-        top_cpu_info = [{
-            "pid": p.pid,
-            "name": p.name,
-            "cpu_usage": p.cpu_usage,
-            "tags": list(p.tags)
-        } for p in top_cpu]
-        
-        # Processus avec le plus d'utilisation mémoire
-        top_memory = sorted(processes, key=lambda p: p.memory_usage, reverse=True)[:5]
-        top_memory_info = [{
-            "pid": p.pid,
-            "name": p.name,
-            "memory_usage": p.memory_usage,
-            "tags": list(p.tags)
-        } for p in top_memory]
-        
-        # Stats par tag
-        tags_stats = {}
-        all_tags = set()
-        for p in processes:
-            for tag in p.tags:
-                all_tags.add(tag)
-        
-        for tag in all_tags:
-            tagged_processes = [p for p in processes if tag in p.tags]
-            if tagged_processes:
-                tags_stats[tag] = {
-                    "count": len(tagged_processes),
-                    "total_cpu": sum(p.cpu_usage for p in tagged_processes),
-                    "total_memory": sum(p.memory_usage for p in tagged_processes)
-                }
-        
-        return {
-            "count": len(processes),
-            "total_cpu": total_cpu,
-            "total_memory": total_memory,
-            "top_cpu": top_cpu_info,
-            "top_memory": top_memory_info,
-            "by_tag": tags_stats,
-            "timestamp": datetime.now().isoformat()
-        }
+        with self._lock:
+            for key, value in thresholds.items():
+                if key in self._thresholds and isinstance(value, (int, float)):
+                    self._thresholds[key] = float(value)
+            
+            return True
 
-# Créer l'instance singleton
-advanced_process_monitor = AdvancedProcessMonitor()
+# Create singleton instance
+system_resource_monitor = SystemResourceMonitor()
 
-# Démarrer automatiquement le monitoring des processus lors de l'importation
+# Try to auto-start monitoring
 try:
-    advanced_process_monitor.start_monitoring()
+    system_resource_monitor.start_monitoring()
 except Exception as e:
-    logger.error(f"Error auto-starting process monitor: {e}")
+    logger.error(f"Error auto-starting resource monitor: {e}")
 
-# Pour faciliter l'importation
-__all__ = ['AdvancedProcessMonitor', 'ProcessInfo', 'advanced_process_monitor']
+# Exports
+__all__ = ['ResourceUsage', 'SystemResourceMonitor', 'system_resource_monitor']
