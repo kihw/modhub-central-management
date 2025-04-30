@@ -66,7 +66,7 @@ export const deleteMod = createAsyncThunk(
 
 const initialState = {
   mods: [],
-  activeMods: new Set(),
+  activeMods: [], // Changed from Set to Array
   status: STATUS.IDLE,
   error: null,
   modHistory: [],
@@ -84,11 +84,14 @@ const addToHistory = (state, modId, action, source = 'system') => {
   ];
 };
 
+// Updated to work with array instead of Set
 const updateModState = (state, id, enabled) => {
   if (enabled) {
-    state.activeMods.add(id);
+    if (!state.activeMods.includes(id)) {
+      state.activeMods.push(id);
+    }
   } else {
-    state.activeMods.delete(id);
+    state.activeMods = state.activeMods.filter(modId => modId !== id);
   }
 };
 
@@ -114,7 +117,10 @@ const modsSlice = createSlice({
       .addCase(fetchMods.fulfilled, (state, action) => {
         state.status = STATUS.SUCCEEDED;
         state.mods = action.payload;
-        state.activeMods = new Set(action.payload.filter(mod => mod.enabled).map(mod => mod.id));
+        // Changed to array filter
+        state.activeMods = action.payload
+          .filter(mod => mod.enabled)
+          .map(mod => mod.id);
       })
       .addCase(fetchMods.rejected, (state, action) => {
         state.status = STATUS.FAILED;
@@ -161,7 +167,8 @@ const modsSlice = createSlice({
 export const { setActiveMod, clearModHistory } = modsSlice.actions;
 
 export const selectAllMods = state => state.mods.mods;
-export const selectActiveMods = state => Array.from(state.mods.activeMods);
+// No need to convert from Set anymore
+export const selectActiveMods = state => state.mods.activeMods;
 export const selectModById = (state, modId) => state.mods.mods.find(mod => mod.id === modId);
 export const selectModStatus = state => state.mods.status;
 export const selectModError = state => state.mods.error;
