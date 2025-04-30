@@ -127,33 +127,89 @@ async def get_async_db() -> AsyncGenerator[AsyncSession, None]:
 # Initialize the database tables
 # In backend/db/database.py, improve the init_db function:
 
+# Amélioration dans backend/db/database.py
+
 def init_db() -> None:
     from . import models
     try:
-        # Make sure the data directory exists
+        # S'assurer que le répertoire de données existe
         data_dir = Path(settings.DATA_DIR)
         data_dir.mkdir(parents=True, exist_ok=True)
         
-        # Create all tables
+        # Enregistrer tous les modèles explicitement avant la création des tables
+        # Cela aide à résoudre les problèmes de dépendances circulaires
+        from .models import Base, Mod, User, UserSettings, AutomationRule, Condition, Action, Log
+        from .models import Process, DeviceState, Variable, Setting, ActionLog
+        
+        # Créer toutes les tables
         Base.metadata.create_all(bind=engine)
         
-        # Verify the creation by attempting to access a key table
+        # Vérifier la création en essayant d'accéder à une table clé
         with db_session() as session:
-            # Just try to access the mods table to verify it exists
-            from .models import Mod
-            session.query(Mod).first()
-            
+            try:
+                # Vérifier si la table mods existe
+                first_mod = session.query(Mod).first()
+                logger.info(f"Mod table verified: {'data found' if first_mod else 'no data yet'}")
+                
+                # Vérifier également d'autres tables essentielles
+                first_user = session.query(User).first()
+                logger.info(f"User table verified: {'data found' if first_user else 'no data yet'}")
+                
+                first_rule = session.query(AutomationRule).first()
+                logger.info(f"AutomationRule table verified: {'data found' if first_rule else 'no data yet'}")
+                
+                # Si aucun utilisateur n'existe, créer un utilisateur système par défaut
+                if not first_user:
+                    from hashlib import sha256
+                    import secrets
+                    
+                    # Générer un mot de passe sécurisé
+                    temp_password = secrets.token_urlsafe(12)
+                    hashed_password = sha256(temp_password.encode()).hexdigest()
+                    
+                    system_user = User(
+                        username="system",
+                        email="system@modhub.local",
+                        hashed_password=hashed_password,
+                        is_admin=True
+                    )
+                    session.add(system_user)
+                    session.commit()
+                    
+                    # Créer les paramètres utilisateur par défaut
+                    user_settings = UserSettings(
+                        user_id=system_user.id,
+                        theme="dark",
+                        notifications_enabled=True,
+                        auto_backup=True,
+                        preferences={}
+                    )
+                    session.add(user_settings)
+                    session.commit()
+                    
+                    logger.info(f"Created default system user with temporary password: {temp_password}")
+                    logger.info("IMPORTANT: Please change this password immediately after first login!")
+                
+            except Exception as table_error:
+                logger.error(f"Error verifying tables: {str(table_error)}")
+                raise
+                
         logger.info("Database initialized successfully")
+        
     except Exception as e:
         logger.error(f"Database initialization failed: {str(e)}", exc_info=True)
-        # Try to create tables one by one to identify specific issues
+        
+        # Essayer de créer les tables une par une pour identifier les problèmes spécifiques
         try:
             with engine.begin() as conn:
-                # Get all table objects from Base.metadata
+                # Récupérer tous les objets de table de Base.metadata
                 for table in Base.metadata.sorted_tables:
                     try:
-                        table.create(bind=conn, checkfirst=True)
-                        logger.info(f"Table {table.name} created successfully")
+                        if not engine.dialect.has_table(conn, table.name):
+                            table.create(bind=conn)
+                            logger.info(f"Table {table.name} created successfully")
+                        else:
+                            logger.info(f"Table {table.name} already exists")
                     except Exception as table_error:
                         logger.error(f"Failed to create table {table.name}: {str(table_error)}")
         except Exception as recovery_error:

@@ -7,7 +7,7 @@ import logging
 import uvicorn
 import argparse
 from pathlib import Path
-
+from backend.db.database import init_db
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -21,8 +21,6 @@ logger = logging.getLogger(__name__)
 
 def run_app(host='127.0.0.1', port=8668, reload=False, workers=1, log_level='info'):
     try:
-        # Initialize database first
-        from db.database import init_db
         init_db()
         logger.info("Database initialized")
         
@@ -54,7 +52,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     
     if args.init_db:
-        from db.database import init_db
+        
         init_db()
         logger.info("Database initialized successfully")
         sys.exit(0)

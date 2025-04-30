@@ -86,17 +86,29 @@ class SystemResourceMonitor:
         self._initialized = True
         
         logger.info("SystemResourceMonitor initialized")
-    
+
     def _collect_system_metrics(self) -> ResourceUsage:
-        """Collect current system resource metrics"""
+        """Collect current system resource metrics with improved error handling"""
         try:
             # Get CPU usage
-            cpu_percent = psutil.cpu_percent(interval=0.1)
-            
+            try:
+                cpu_percent = psutil.cpu_percent(interval=0.1)
+            except Exception as e:
+                logger.warning(f"Error getting CPU percent: {e}")
+                cpu_percent = 0.0
+
             # Get memory usage
-            memory = psutil.virtual_memory()
-            memory_percent = memory.percent
-            
+            try:
+                memory = psutil.virtual_memory()
+                memory_percent = memory.percent
+                total_memory = memory.total
+                available_memory = memory.available
+            except Exception as e:
+                logger.warning(f"Error getting memory info: {e}")
+                memory_percent = 0.0
+                total_memory = 0
+                available_memory = 0
+
             # Get disk usage (root or home directory)
             try:
                 disk_path = os.path.expanduser('~')
@@ -104,99 +116,172 @@ class SystemResourceMonitor:
                 disk_percent = disk.percent
                 total_disk = disk.total
                 available_disk = disk.free
-            except:
+            except Exception as e:
+                logger.warning(f"Error getting disk usage for home directory: {e}")
                 # Fallback to root directory
                 try:
                     disk = psutil.disk_usage('/')
                     disk_percent = disk.percent
                     total_disk = disk.total
                     available_disk = disk.free
-                except:
+                except Exception as e2:
+                    logger.warning(f"Error getting disk usage for root directory: {e2}")
                     disk_percent = 0.0
                     total_disk = 0
                     available_disk = 0
-            
+
             # Get process count
-            processes_count = len(list(psutil.process_iter()))
-            
+            try:
+                processes = list(psutil.process_iter())
+                processes_count = len(processes)
+            except Exception as e:
+                logger.warning(f"Error getting process count: {e}")
+                processes_count = 0
+
             # Get temperature information
-            temperatures = self._collect_temperatures()
-            
+            try:
+                temperatures = self._collect_temperatures()
+            except Exception as e:
+                logger.warning(f"Error collecting temperature data: {e}")
+                temperatures = []
+
             # Get GPU usage information
-            gpu_usage = self._collect_gpu_metrics()
-            
+            try:
+                gpu_usage = self._collect_gpu_metrics()
+            except Exception as e:
+                logger.warning(f"Error collecting GPU metrics: {e}")
+                gpu_usage = []
+
             # Create ResourceUsage object
             resource_usage = ResourceUsage(
                 timestamp=datetime.now(),
                 cpu_percent=cpu_percent,
                 memory_usage=memory_percent,
                 disk_usage=disk_percent,
-                total_memory=memory.total,
-                available_memory=memory.available,
+                total_memory=total_memory,
+                available_memory=available_memory,
                 total_disk=total_disk,
                 available_disk=available_disk,
                 processes_count=processes_count,
                 temperature=temperatures,
                 gpu_usage=gpu_usage
             )
-            
+
             # Update peak metrics
             self._update_peak_metrics(resource_usage)
-            
+
             # Check for critical resource usage
             self._check_critical_thresholds(resource_usage)
-            
+
             return resource_usage
-            
+
         except Exception as e:
-            logger.error(f"Error collecting system metrics: {e}")
-            return ResourceUsage()
-    
-    def _collect_temperatures(self) -> List[Dict[str, Any]]:
-        """Collect temperature information from system sensors"""
-        temperatures = []
-        try:
-            if hasattr(psutil, "sensors_temperatures"):
-                temps = psutil.sensors_temperatures()
-                if temps:
-                    for name, entries in temps.items():
-                        for entry in entries:
-                            if hasattr(entry, "current") and entry.current is not None:
-                                temperatures.append({
-                                    "sensor": name,
-                                    "label": entry.label or "Unknown",
-                                    "temperature": entry.current,
-                                    "high": entry.high if hasattr(entry, "high") else None,
-                                    "critical": entry.critical if hasattr(entry, "critical") else None
-                                })
-        except Exception as e:
-            logger.debug(f"Error collecting temperature data: {e}")
-        
-        return temperatures
-    
+            logger.error(f"Error collecting system metrics: {e}", exc_info=True)
+            # Retourner un objet ResourceUsage avec des valeurs par défaut
+            return ResourceUsage(
+                timestamp=datetime.now(),
+                cpu_percent=0.0,
+                memory_usage=0.0,
+                disk_usage=0.0,
+                total_memory=0,
+                available_memory=0,
+                total_disk=0,
+                available_disk=0,
+                processes_count=0,
+                temperature=[],
+                gpu_usage=[]
+            )
+
     def _collect_gpu_metrics(self) -> List[Dict[str, Any]]:
-        """Collect GPU metrics if available"""
+        """Collect GPU metrics with improved error handling"""
         gpu_metrics = []
-        
+
         # Try importing and using GPUtil for NVIDIA GPUs
         try:
             import GPUtil
-            gpus = GPUtil.getGPUs()
-            for i, gpu in enumerate(gpus):
-                gpu_metrics.append({
-                    "id": i,
-                    "name": gpu.name,
-                    "load": gpu.load * 100,  # Convert to percentage
-                    "memory_usage": gpu.memoryUtil * 100,  # Convert to percentage
-                    "temperature": gpu.temperature,
-                    "memory_total": gpu.memoryTotal,
-                    "memory_used": gpu.memoryUsed
-                })
-        except:
-            # GPUtil not available or no NVIDIA GPUs
-            pass
-        
+            try:
+                gpus = GPUtil.getGPUs()
+                for i, gpu in enumerate(gpus):
+                    try:
+                        gpu_metrics.append({
+                            "id": i,
+                            "name": gpu.name,
+                            "load": gpu.load * 100 if gpu.load is not None else 0.0,  # Convert to percentage
+                            "memory_usage": gpu.memoryUtil * 100 if gpu.memoryUtil is not None else 0.0,  # Convert to percentage
+                            "temperature": gpu.temperature if gpu.temperature is not None else 0.0,
+                            "memory_total": gpu.memoryTotal if gpu.memoryTotal is not None else 0,
+                            "memory_used": gpu.memoryUsed if gpu.memoryUsed is not None else 0
+                        })
+                    except Exception as e:
+                        logger.warning(f"Error processing GPU {i}: {e}")
+            except Exception as e:
+                logger.warning(f"Error getting GPUs with GPUtil: {e}")
+        except ImportError:
+            # GPUtil not available, try other approaches
+            try:
+                # Tentative avec nvidia-smi via subprocess (Windows/Linux)
+                import subprocess
+                import json
+
+                try:
+                    result = subprocess.run(
+                        ['nvidia-smi', '--query-gpu=index,name,utilization.gpu,memory.used,memory.total,temperature.gpu', '--format=csv,noheader'],
+                        capture_output=True,
+                        text=True,
+                        timeout=2
+                    )
+
+                    if result.returncode == 0:
+                        for i, line in enumerate(result.stdout.strip().split('\n')):
+                            parts = line.split(', ')
+                            if len(parts) >= 6:
+                                try:
+                                    utilization = float(parts[2].replace(' %', ''))
+                                    mem_used = float(parts[3].replace(' MiB', ''))
+                                    mem_total = float(parts[4].replace(' MiB', ''))
+                                    temp = float(parts[5])
+
+                                    gpu_metrics.append({
+                                        "id": i,
+                                        "name": parts[1],
+                                        "load": utilization,
+                                        "memory_usage": (mem_used / mem_total * 100) if mem_total > 0 else 0.0,
+                                        "temperature": temp,
+                                        "memory_total": mem_total,
+                                        "memory_used": mem_used
+                                    })
+                                except (ValueError, IndexError) as e:
+                                    logger.warning(f"Error parsing nvidia-smi output for GPU {i}: {e}")
+                except (subprocess.SubprocessError, FileNotFoundError) as e:
+                    logger.debug(f"nvidia-smi command failed: {e}")
+            except Exception as e:
+                logger.debug(f"Error in alternative GPU detection: {e}")
+
         return gpu_metrics
+
+        def _collect_temperatures(self) -> List[Dict[str, Any]]:
+            """Collect temperature information from system sensors"""
+            temperatures = []
+            try:
+                if hasattr(psutil, "sensors_temperatures"):
+                    temps = psutil.sensors_temperatures()
+                    if temps:
+                        for name, entries in temps.items():
+                            for entry in entries:
+                                if hasattr(entry, "current") and entry.current is not None:
+                                    temperatures.append({
+                                        "sensor": name,
+                                        "label": entry.label or "Unknown",
+                                        "temperature": entry.current,
+                                        "high": entry.high if hasattr(entry, "high") else None,
+                                        "critical": entry.critical if hasattr(entry, "critical") else None
+                                    })
+            except Exception as e:
+                logger.debug(f"Error collecting temperature data: {e}")
+
+            return temperatures
+
+    
     
     def _update_peak_metrics(self, resource_usage: ResourceUsage) -> None:
         """Update peak resource metrics"""

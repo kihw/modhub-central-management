@@ -187,22 +187,28 @@ class AdvancedProcessMonitor:
         """Create a ProcessInfo object from a psutil.Process"""
         try:
             proc_info = proc.info
-            
-            # Basic information
-            pid = proc_info['pid']
-            name = proc_info.get('name', '')
-            if not name:
+
+            # Vérification de sécurité - si proc_info est None, retourner None immédiatement
+            if proc_info is None:
+                logger.warning(f"Process info is None for PID {proc.pid}")
                 return None
-                
+
+            # Basic information
+            pid = proc_info.get('pid')
+            name = proc_info.get('name', '')
+            if not name or not pid:
+                return None
+
             exe_path = proc_info.get('exe')
             status = proc_info.get('status', 'unknown')
-            
-            # Convert cmdline to tuple
-            cmdline = tuple(proc_info.get('cmdline', []))
-            
+
+            # Vérification de sécurité pour cmdline
+            cmdline_value = proc_info.get('cmdline', [])
+            cmdline = tuple(cmdline_value) if isinstance(cmdline_value, (list, tuple)) else tuple()
+
             # Calculate tags based on process name
             tags = frozenset(self._categorize_process(name))
-            
+
             # Create basic ProcessInfo object
             process_info = ProcessInfo(
                 pid=pid,
@@ -217,24 +223,64 @@ class AdvancedProcessMonitor:
             # Add resource metrics and other detailed information
             try:
                 with proc.oneshot():
+                    cpu_usage = 0.0
+                    memory_usage = 0.0
+                    threads_count = 0
+                    io_read_bytes = 0
+                    io_write_bytes = 0
+                    parent_pid = None
+                    start_time = datetime.now()
+
+                    try:
+                        cpu_usage = proc.cpu_percent() or 0.0
+                    except (psutil.NoSuchProcess, psutil.AccessDenied, Exception) as e:
+                        logger.debug(f"Failed to get CPU usage for PID {pid}: {e}")
+
+                    try:
+                        memory_usage = proc.memory_percent() or 0.0
+                    except (psutil.NoSuchProcess, psutil.AccessDenied, Exception) as e:
+                        logger.debug(f"Failed to get memory usage for PID {pid}: {e}")
+
+                    try:
+                        threads_count = proc.num_threads()
+                    except (psutil.NoSuchProcess, psutil.AccessDenied, Exception) as e:
+                        logger.debug(f"Failed to get thread count for PID {pid}: {e}")
+
+                    try:
+                        start_time = datetime.fromtimestamp(proc.create_time())
+                    except (psutil.NoSuchProcess, psutil.AccessDenied, Exception) as e:
+                        logger.debug(f"Failed to get start time for PID {pid}: {e}")
+
+                    try:
+                        if hasattr(proc, 'io_counters') and proc.io_counters():
+                            io_read_bytes = getattr(proc.io_counters(), 'read_bytes', 0)
+                            io_write_bytes = getattr(proc.io_counters(), 'write_bytes', 0)
+                    except (psutil.NoSuchProcess, psutil.AccessDenied, Exception) as e:
+                        logger.debug(f"Failed to get IO counters for PID {pid}: {e}")
+
+                    try:
+                        parent = proc.parent()
+                        parent_pid = parent.pid if parent else None
+                    except (psutil.NoSuchProcess, psutil.AccessDenied, Exception) as e:
+                        logger.debug(f"Failed to get parent PID for PID {pid}: {e}")
+
                     return ProcessInfo(
                         **{**process_info.__dict__,
-                          'cpu_usage': proc.cpu_percent() or 0.0,
-                          'memory_usage': proc.memory_percent() or 0.0,
-                          'threads_count': proc.num_threads(),
-                          'start_time': datetime.fromtimestamp(proc.create_time()),
-                          'io_read_bytes': getattr(proc.io_counters(), 'read_bytes', 0) if hasattr(proc, 'io_counters') else 0,
-                          'io_write_bytes': getattr(proc.io_counters(), 'write_bytes', 0) if hasattr(proc, 'io_counters') else 0,
-                          'parent_pid': proc.parent().pid if proc.parent() else None}
+                           'cpu_usage': cpu_usage,
+                           'memory_usage': memory_usage,
+                           'threads_count': threads_count,
+                           'start_time': start_time,
+                           'io_read_bytes': io_read_bytes,
+                           'io_write_bytes': io_write_bytes,
+                           'parent_pid': parent_pid}
                     )
-            except (psutil.NoSuchProcess, psutil.AccessDenied):
+            except (psutil.NoSuchProcess, psutil.AccessDenied, Exception) as e:
+                logger.debug(f"Error getting detailed info for PID {pid}: {e}")
                 # Return basic object if detailed metrics fail
                 return process_info
-                
-        except (psutil.NoSuchProcess, psutil.AccessDenied):
-            return None
-        except Exception as e:
-            logger.warning(f"Error creating process info for PID {proc.pid}: {e}")
+
+        except (psutil.NoSuchProcess, psutil.AccessDenied, Exception) as e:
+            logger.debug(f"Failed to create process info for PID {proc.pid}: {e}")
             return None
 
     def _categorize_process(self, process_name: str) -> Set[str]:

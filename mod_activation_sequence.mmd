@@ -1,0 +1,42 @@
+sequenceDiagram
+    participant Client
+    participant ModAPI as Mods API
+    participant MM as Mod Manager
+    participant DB as Database
+    participant RM as Resource Monitor
+    participant PM as Process Monitor
+    participant EM as Events Manager
+    participant AM as Alert Manager
+    
+    Client->>ModAPI: POST /api/mods/{mod_id}/toggle
+    
+    ModAPI->>DB: get_mod(mod_id)
+    DB-->>ModAPI: mod
+    
+    ModAPI->>MM: activate_mod(mod_id, config)
+    
+    MM->>PM: get_processes()
+    PM-->>MM: active_processes
+    
+    MM->>RM: get_latest_usage()
+    RM-->>MM: resource_usage
+    
+    alt Gaming Mod
+        MM->>MM: check_gaming_processes(active_processes)
+    else Night Mod
+        MM->>MM: check_night_time()
+    else Media Mod
+        MM->>MM: check_media_processes(active_processes)
+    end
+    
+    MM->>MM: handle_conflicts()
+    
+    MM->>EM: emit_event(MOD_ACTIVATED)
+    EM-->>AM: trigger_alert(mod_activated)
+    
+    MM-->>ModAPI: activation_result
+    
+    ModAPI->>DB: update_mod_state(mod_id, is_active)
+    DB-->>ModAPI: updated_mod
+    
+    ModAPI-->>Client: ModResponse
