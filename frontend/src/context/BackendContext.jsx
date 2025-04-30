@@ -17,8 +17,10 @@ export const BackendProvider = ({ children }) => {
   // Use our custom hook to track component mounted state
   const isMounted = useIsMounted();
 
-  // Use relative URL to leverage the proxy configuration
-  const API_BASE_URL = '/api';
+  // Définition de l'URL de l'API - corrigée pour utiliser le port 8668
+  const API_BASE_URL = process.env.NODE_ENV === 'development' 
+    ? '/api' // En dev, on utilise le proxy configuré dans package.json ou vite.config
+    : 'http://localhost:8668/api'; // En prod, on utilise l'URL directe
 
   // Create axios instance with base URL
   const axiosInstance = axios.create({
