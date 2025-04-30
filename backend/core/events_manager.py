@@ -146,18 +146,31 @@ class EventManager:
                 self._processing_task = None
             await self._event_queue.join()
 
+    # In backend/core/events_manager.py - Fix the event handling when event_type is None
     def get_recent_events(self, event_type: Optional[EventType] = None, 
                          since: Optional[datetime] = None,
                          limit: Optional[int] = None) -> List[SystemEvent]:
         events = self._event_history
-        if event_type:
-            events = [e for e in events if e.event_type == event_type]
+
+        # Fixed handling when event_type is None
+        if event_type is not None:
+            # Handle both enum and string input
+            if isinstance(event_type, str):
+                try:
+                    event_type = EventType[event_type.upper()]
+                    events = [e for e in events if e.event_type == event_type]
+                except (KeyError, ValueError):
+                    # Invalid event type string, return empty list
+                    return []
+            else:
+                events = [e for e in events if e.event_type == event_type]
+
         if since:
             events = [e for e in events if e.timestamp >= since]
         if limit:
             events = events[-limit:]
         return events
-
+    
     def get_event_summary(self, hours: int = 24) -> Dict[EventType, int]:
         cutoff = datetime.now() - timedelta(hours=hours)
         return {event_type: sum(1 for event in self._event_history 

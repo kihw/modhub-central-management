@@ -2,7 +2,7 @@ import psutil
 import logging
 from typing import Dict, List, Optional, Callable, Set
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from queue import Queue
 import threading
 import time
@@ -68,6 +68,9 @@ class AdvancedProcessMonitor:
         )
         self._monitoring_thread.start()
         return True
+    
+    def is_monitoring(self) -> bool:
+        return self._monitoring_thread is not None and self._monitoring_thread.is_alive()
 
     def stop_monitoring(self) -> bool:
         if not self._monitoring_thread:
@@ -91,20 +94,62 @@ class AdvancedProcessMonitor:
                 time.sleep(max(1.0, self._scan_interval / 2))
 
     def _scan_processes(self) -> None:
-        current_processes = WeakValueDictionary()
-        
-        for proc in psutil.process_iter(['pid', 'name', 'exe', 'status', 'cmdline']):
-            if len(current_processes) >= self._max_tracked_processes:
-                break
-                
-            try:
-                process_info = self._create_process_info(proc)
-                if process_info:
-                    current_processes[process_info.pid] = process_info
-            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
-                continue
-        
-        self._tracked_processes = current_processes
+        if not self.is_monitoring:
+            return
+
+        current_time = datetime.now()
+        if current_time - self._last_scan < timedelta(seconds=self._scan_interval):
+            return
+
+        self._last_scan = current_time
+        new_processes: Dict[str, ProcessInfo] = {}
+
+        try:
+            process_list = list(psutil.process_iter(['pid', 'name', 'create_time']))
+
+            # First, build a map of all current processes for efficient lookup
+            current_proc_map = {}
+            for proc in process_list:
+                try:
+                    proc_name = proc.info['name'].lower()
+                    current_proc_map[proc_name] = proc
+                except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess, KeyError):
+                    continue
+
+            # Now check watched and previously seen processes
+            for proc_name in set(list(self.watched_processes.keys()) + list(self.current_processes.keys())):
+                proc = current_proc_map.get(proc_name)
+
+                if proc:
+                    # Process still exists
+                    if proc_name in self.current_processes:
+                        # Update existing process info
+                        new_processes[proc_name] = ProcessInfo(
+                            process=proc,
+                            start_time=self.current_processes[proc_name].start_time,
+                            last_seen=current_time
+                        )
+                    else:
+                        # New process - trigger callback if watched
+                        try:
+                            create_time = datetime.fromtimestamp(proc.info['create_time'])
+                        except (KeyError, TypeError, ValueError, OSError):
+                            create_time = current_time
+
+                        new_processes[proc_name] = ProcessInfo(
+                            process=proc,
+                            start_time=create_time,
+                            last_seen=current_time
+                        )
+
+                        if proc_name in self.watched_processes:
+                            self._trigger_callback(proc_name, proc)
+
+            # Update the process list with new info
+            self.current_processes = new_processes
+
+        except Exception as e:
+            self.logger.error(f"Error during process scan: {str(e)}")
 
     def _create_process_info(self, proc: psutil.Process) -> Optional[ProcessInfo]:
         try:

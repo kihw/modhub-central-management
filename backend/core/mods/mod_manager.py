@@ -63,21 +63,35 @@ class ModManager:
             del self._mods[mod_id]
             return True
 
+    
+    # In backend/core/mods/mod_manager.py, modify the activate_mod method
     def activate_mod(self, mod_id: str, config: Optional[Dict[str, Any]] = None) -> bool:
         with self._mod_lock:
             mod_state = self._mods.get(mod_id)
             if not mod_state or mod_state.status == ModStatus.ACTIVE:
                 return False
-
+    
             try:
+                # Handle mod_id that might be a type name
+                if mod_id not in self._mods and mod_id in ["gaming", "night", "media", "custom"]:
+                    # Try to find mod by type instead of id
+                    for id, state in self._mods.items():
+                        if hasattr(state.instance, 'type') and state.instance.type == mod_id:
+                            mod_id = id
+                            mod_state = state
+                            break
+                        
+                if not mod_state:
+                    return False
+                    
                 conflicts = self._check_conflicts(mod_state.instance)
                 if conflicts:
                     self._resolve_conflicts(mod_state.instance, conflicts)
-
+    
                 if config:
                     mod_state.config.update(config)
                     mod_state.instance.update_config(mod_state.config)
-
+    
                 if mod_state.instance.activate():
                     mod_state.status = ModStatus.ACTIVE
                     self._active_mods[mod_id] = mod_state.instance
@@ -90,7 +104,7 @@ class ModManager:
                 logger.error(f"Activation failed for mod {mod_id}: {str(e)}", exc_info=True)
                 mod_state.status = ModStatus.ERROR
                 return False
-
+    
     def deactivate_mod(self, mod_id: str) -> bool:
         with self._mod_lock:
             mod_state = self._mods.get(mod_id)

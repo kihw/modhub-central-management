@@ -1,4 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends, status
+from fastapi.encoders import jsonable_encoder
+from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 from typing import Dict, List, Optional
 import logging
@@ -80,27 +82,53 @@ async def delete_existing_mod(
     else:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Mod not found")
 
+# In backend/api/mods.py - improve the toggle_mod_status method
 @router.post("/{mod_id}/toggle", response_model=ModResponse)
 async def toggle_mod_status(
     mod_id: int,
     toggle_data: ModToggle,
     db: Session = Depends(get_db)
 ) -> ModResponse:
-    if not (mod := get_mod(db, mod_id=mod_id)):
+    if not (mod := get_mod(db, mod_id)):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Mod not found")
     
     try:
         updated_mod = toggle_mod(db=db, mod_id=mod_id, is_active=toggle_data.enabled)
-        if updated_mod.is_active:
-            mod_manager.activate_mod(updated_mod.type, updated_mod.config)
-        else:
-            mod_manager.deactivate_mod(updated_mod.type)
+        
+        # Add more comprehensive error handling
+        if not updated_mod:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to update mod status in database"
+            )
+            
+        # Get the mod manager instance
+        mod_manager_result = True
+        try:
+            if updated_mod.is_active:
+                mod_manager_result = mod_manager.activate_mod(updated_mod.type, updated_mod.config)
+            else:
+                mod_manager_result = mod_manager.deactivate_mod(updated_mod.type)
+        except Exception as e:
+            logger.error(f"Mod manager error when toggling mod {mod_id}: {e}")
+            mod_manager_result = False
+            
+        # If mod manager operation failed but database updated, let's be transparent
+        if not mod_manager_result:
+            return JSONResponse(
+                status_code=status.HTTP_207_MULTI_STATUS,
+                content={
+                    "mod": jsonable_encoder(updated_mod),
+                    "warning": "Database updated but mod manager operation failed"
+                }
+            )
+            
         return updated_mod
     except Exception as e:
         logger.error(f"Error toggling mod {mod_id}: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to toggle mod"
+            detail=f"Failed to toggle mod: {str(e)}"
         )
 
 @router.post("/{mod_id}/apply", response_model=ModResponse)

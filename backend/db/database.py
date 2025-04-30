@@ -125,13 +125,39 @@ async def get_async_db() -> AsyncGenerator[AsyncSession, None]:
         await session.close()
 
 # Initialize the database tables
+# In backend/db/database.py, improve the init_db function:
+
 def init_db() -> None:
     from . import models
     try:
+        # Make sure the data directory exists
+        data_dir = Path(settings.DATA_DIR)
+        data_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Create all tables
         Base.metadata.create_all(bind=engine)
+        
+        # Verify the creation by attempting to access a key table
+        with db_session() as session:
+            # Just try to access the mods table to verify it exists
+            from .models import Mod
+            session.query(Mod).first()
+            
         logger.info("Database initialized successfully")
     except Exception as e:
         logger.error(f"Database initialization failed: {str(e)}", exc_info=True)
+        # Try to create tables one by one to identify specific issues
+        try:
+            with engine.begin() as conn:
+                # Get all table objects from Base.metadata
+                for table in Base.metadata.sorted_tables:
+                    try:
+                        table.create(bind=conn, checkfirst=True)
+                        logger.info(f"Table {table.name} created successfully")
+                    except Exception as table_error:
+                        logger.error(f"Failed to create table {table.name}: {str(table_error)}")
+        except Exception as recovery_error:
+            logger.error(f"Recovery attempt failed: {str(recovery_error)}")
         raise
 
 # Initialize the database tables asynchronously

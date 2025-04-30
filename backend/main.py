@@ -5,7 +5,7 @@ from typing import Dict, Any, Optional
 from contextlib import asynccontextmanager
 
 import uvicorn
-from fastapi import FastAPI, Request, HTTPException
+from fastapi import FastAPI, Request, HTTPException, logger
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
@@ -14,7 +14,7 @@ from core.config import settings
 from core.sentry import configure_sentry, capture_exception
 from core.plugin_manager import PluginManager
 from core.events import startup_events, shutdown_events
-from db.database import async_init_db, async_cleanup_db, engine
+from db.database import async_init_db, async_cleanup_db, engine, init_db
 from sqlalchemy.orm import sessionmaker
 
 
@@ -25,8 +25,9 @@ from api import (
     system,
     plugins,
     health
-)
+) 
 from api.system.processes import router as advanced_processes_router
+from api.system.resources import router as resources_router
 
 
 class ApplicationInitializer:
@@ -61,7 +62,7 @@ class ApplicationInitializer:
     async def initialize_database(self) -> None:
         try:
             await async_init_db()
-            
+
             from db.models import Mod
             session_local = sessionmaker(bind=engine)
             session = session_local()
@@ -74,7 +75,7 @@ class ApplicationInitializer:
                 manual_db_init()
             finally:
                 session.close()
-            
+
             self.system_status['database'] = True
             self.logger.info("Database initialized successfully")
         except Exception as e:
@@ -82,7 +83,7 @@ class ApplicationInitializer:
             capture_exception(e, "Database initialization failed")
             self.logger.error(f"Database initialization error: {str(e)}")
             raise
-        
+
         
     async def load_plugins(self) -> None:
         try:
@@ -167,7 +168,30 @@ class ApplicationInitializer:
             allow_methods=["*"],
             allow_headers=["*"],
         )
+        app.include_router(advanced_processes_router, prefix="/api/system", tags=["advanced_processes"])
+        app.include_router(resources_router, prefix="/api/system", tags=["system_resources"])
 
+        # Ajouter un endpoint pour démarrer tous les systèmes de surveillance au démarrage
+        @app.on_event("startup")
+        async def startup_event():
+            # Initialiser la base de données
+            await init_db()
+
+            # Démarrer les moniteurs de ressources et de processus
+            try:
+                from core.resource_monitor import system_resource_monitor
+                from core.process_management.advanced_monitor import advanced_process_monitor
+
+                # Démarrer le moniteur de ressources
+                system_resource_monitor.start_monitoring()
+                logger.info("Resource monitoring started")
+
+                # Démarrer le moniteur de processus
+                advanced_process_monitor.start_monitoring()
+                logger.info("Process monitoring started")
+            except Exception as e:
+                logger.error(f"Error starting monitoring systems: {e}")
+                
         @app.exception_handler(RequestValidationError)
         async def validation_exception_handler(request: Request, exc: RequestValidationError):
             capture_exception(exc, extra={"request_path": request.url.path})

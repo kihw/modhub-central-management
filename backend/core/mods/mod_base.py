@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from enum import Enum, auto
-from typing import Dict, Any, Optional
+from typing import Dict, Any, List, Optional
 import logging
 import uuid
 from dataclasses import dataclass, field
@@ -28,6 +28,7 @@ class ModMetadata:
     activation_count: int = 0
 
 
+# In backend/core/mods/mod_base.py, add the required_resources attribute
 class ModBase(ABC):
     def __init__(
         self,
@@ -44,6 +45,12 @@ class ModBase(ABC):
         self._logger = logging.getLogger(f"mod.{name.lower()}")
         self._config: Dict[str, Any] = {}
         self._activation_start: Optional[datetime] = None
+        # Add the missing required_resources attribute
+        self._required_resources: List[str] = []
+        
+    @property
+    def required_resources(self) -> List[str]:
+        return self._required_resources.copy()
 
     @property
     def metadata(self) -> ModMetadata:

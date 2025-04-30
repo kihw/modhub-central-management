@@ -1,93 +1,140 @@
-from fastapi import APIRouter, HTTPException
-from typing import Dict, List
-from typing_extensions import TypedDict
-import platform
-import psutil
-import socket
+from fastapi import APIRouter, HTTPException, Depends
+from typing import Dict, List, Any
 
-class SystemInfo(TypedDict):
-    os: str
-    version: str
-    hostname: str
-    cpu_count: int
-    memory_total: int
-
-class ProcessInfo(TypedDict):
-    pid: int
-    name: str
-    status: str
-    cpu_percent: float
-    memory_percent: float
-
-class ResourceUsage(TypedDict):
-    cpu_percent: float
-    memory_percent: float
-    disk_usage: Dict[str, float]
-    network_io: Dict[str, int]
+from .processes import router as processes_router
+from .resources import router as resources_router
+from core.resource_monitor import system_resource_monitor
+from core.process_management.advanced_monitor import advanced_process_monitor
 
 router = APIRouter(prefix="/system", tags=["system"])
 
-async def get_system_info() -> SystemInfo:
-    return {
-        "os": platform.system(),
-        "version": platform.version(),
-        "hostname": socket.gethostname(),
-        "cpu_count": psutil.cpu_count(),
-        "memory_total": psutil.virtual_memory().total
-    }
+# Inclure les sous-routeurs
+router.include_router(processes_router)
+router.include_router(resources_router)
 
-async def get_running_processes() -> List[ProcessInfo]:
-    processes = []
-    for proc in psutil.process_iter(['pid', 'name', 'status']):
-        try:
-            process_info = {
-                "pid": proc.info['pid'],
-                "name": proc.info['name'],
-                "status": proc.info['status'],
-                "cpu_percent": proc.cpu_percent(),
-                "memory_percent": proc.memory_percent()
-            }
-            processes.append(process_info)
-        except (psutil.NoSuchProcess, psutil.AccessDenied):
-            continue
-    return processes
+@router.get("/info", response_model=Dict[str, Any])
+async def get_system_info() -> Dict[str, Any]:
+    """Obtenir des informations de base sur le système"""
+    try:
+        # Importer depuis le bon module
+        from ..system_info import get_system_info
+        return get_system_info()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
-async def get_resource_usage() -> ResourceUsage:
-    disk = psutil.disk_usage('/')
-    net_io = psutil.net_io_counters()
+@router.get("/dashboard", response_model=Dict[str, Any])
+async def get_dashboard_info() -> Dict[str, Any]:
+    """Obtenir des informations complètes pour le tableau de bord"""
+    try:
+        # Démarrer les moniteurs si nécessaire
+        if not system_resource_monitor.is_monitoring():
+            system_resource_monitor.start_monitoring()
+        
+        if not advanced_process_monitor.is_monitoring():
+            advanced_process_monitor.start_monitoring()
+            
+        # Obtenir les ressources actuelles
+        latest_resources = system_resource_monitor.get_latest_usage()
+        resource_peaks = system_resource_monitor.get_peak_metrics()
+        
+        # Obtenir les processus importants
+        all_processes = advanced_process_monitor.get_all_processes()
+        high_cpu_processes = sorted(
+            [p for p in all_processes if p.cpu_usage > 5.0],
+            key=lambda p: p.cpu_usage,
+            reverse=True
+        )[:5]
+        
+        high_memory_processes = sorted(
+            [p for p in all_processes if p.memory_usage > 1.0],
+            key=lambda p: p.memory_usage,
+            reverse=True
+        )[:5]
+        
+        # Construire la réponse
+        return {
+            "resources": {
+                "cpu": round(latest_resources.cpu_percent, 1),
+                "memory": round(latest_resources.memory_usage, 1),
+                "disk": round(latest_resources.disk_usage, 1),
+                "peaks": {
+                    "cpu": round(resource_peaks.get('cpu_peak', 0.0), 1),
+                    "memory": round(resource_peaks.get('memory_peak', 0.0), 1),
+                    "disk": round(resource_peaks.get('disk_peak', 0.0), 1)
+                }
+            },
+            "processes": {
+                "total_count": len(all_processes),
+                "high_cpu": [
+                    {"pid": p.pid, "name": p.name, "cpu": round(p.cpu_usage, 1), "memory": round(p.memory_usage, 1)}
+                    for p in high_cpu_processes
+                ],
+                "high_memory": [
+                    {"pid": p.pid, "name": p.name, "cpu": round(p.cpu_usage, 1), "memory": round(p.memory_usage, 1)}
+                    for p in high_memory_processes
+                ]
+            },
+            "system_status": {
+                "resource_monitoring_active": system_resource_monitor.is_monitoring(),
+                "process_monitoring_active": advanced_process_monitor.is_monitoring()
+            },
+            "timestamp": latest_resources.timestamp.isoformat()
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/start-monitoring", response_model=Dict[str, Any])
+async def start_all_monitoring() -> Dict[str, Any]:
+    """Démarrer tous les systèmes de surveillance"""
+    resource_result = False
+    process_result = False
+    
+    try:
+        if not system_resource_monitor.is_monitoring():
+            resource_result = system_resource_monitor.start_monitoring()
+        else:
+            resource_result = True
+    except Exception as e:
+        resource_result = False
+    
+    try:
+        if not advanced_process_monitor.is_monitoring():
+            process_result = advanced_process_monitor.start_monitoring()
+        else:
+            process_result = True
+    except Exception as e:
+        process_result = False
     
     return {
-        "cpu_percent": psutil.cpu_percent(interval=1),
-        "memory_percent": psutil.virtual_memory().percent,
-        "disk_usage": {
-            "total": disk.total,
-            "used": disk.used,
-            "free": disk.free,
-            "percent": disk.percent
-        },
-        "network_io": {
-            "bytes_sent": net_io.bytes_sent,
-            "bytes_recv": net_io.bytes_recv
-        }
+        "resource_monitoring": "started" if resource_result else "failed",
+        "process_monitoring": "started" if process_result else "failed",
+        "all_success": resource_result and process_result
     }
 
-@router.get("/info", response_model=SystemInfo)
-async def system_info() -> SystemInfo:
+@router.post("/stop-monitoring", response_model=Dict[str, Any])
+async def stop_all_monitoring() -> Dict[str, Any]:
+    """Arrêter tous les systèmes de surveillance"""
+    resource_result = False
+    process_result = False
+    
     try:
-        return await get_system_info()
+        if system_resource_monitor.is_monitoring():
+            resource_result = system_resource_monitor.stop_monitoring()
+        else:
+            resource_result = True
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.get("/processes", response_model=List[ProcessInfo])
-async def running_processes() -> List[ProcessInfo]:
+        resource_result = False
+    
     try:
-        return await get_running_processes()
+        if advanced_process_monitor.is_monitoring():
+            process_result = advanced_process_monitor.stop_monitoring()
+        else:
+            process_result = True
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.get("/resources", response_model=ResourceUsage)
-async def resource_usage() -> ResourceUsage:
-    try:
-        return await get_resource_usage()
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        process_result = False
+    
+    return {
+        "resource_monitoring": "stopped" if resource_result else "failed",
+        "process_monitoring": "stopped" if process_result else "failed",
+        "all_success": resource_result and process_result
+    }

@@ -100,12 +100,28 @@ def load_config_file(path: Path) -> Dict[str, Any]:
     if not path.is_file():
         return {}
     try:
-        with path.open("r", encoding="utf-8") as f:
-            return json.load(f)
-    except (json.JSONDecodeError, OSError) as e:
+        # Expanded support for file formats
+        file_extension = path.suffix.lower()
+        
+        if file_extension == '.json':
+            import json
+            with path.open("r", encoding="utf-8") as f:
+                return json.load(f)
+        elif file_extension in ['.yaml', '.yml']:
+            import yaml
+            with path.open("r", encoding="utf-8") as f:
+                return yaml.safe_load(f)
+        elif file_extension == '.toml':
+            import toml
+            with path.open("r", encoding="utf-8") as f:
+                return toml.load(f)
+        else:
+            logger.warning(f"Unsupported config file format: {file_extension}")
+            return {}
+    except Exception as e:
         logger.error(f"Failed to load config file {path}: {e}")
         return {}
-
+    
 settings = ModHubSettings()
 
 config_path = Path(os.getenv("MODHUB_CONFIG_FILE", "config.json")).resolve()
