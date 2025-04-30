@@ -1,6 +1,7 @@
 // src/context/BackendContext.jsx
 import React, { createContext, useState, useEffect, useContext } from 'react';
 import axios from 'axios';
+import useIsMounted from '../hooks/useIsMounted';
 
 const BackendContext = createContext();
 
@@ -12,6 +13,9 @@ export const BackendProvider = ({ children }) => {
     version: null,
     error: null,
   });
+
+  // Use our custom hook to track component mounted state
+  const isMounted = useIsMounted();
 
   // Use relative URL to leverage the proxy configuration
   const API_BASE_URL = '/api';
@@ -26,12 +30,88 @@ export const BackendProvider = ({ children }) => {
   });
 
   useEffect(() => {
+    let timeoutId = null;
+    let isPolling = false;
+
     const checkBackendStatus = async () => {
+      if (isPolling) return; // Prevent concurrent requests
+      
+      isPolling = true;
+      
       try {
-        setStatus(prev => ({ ...prev, isChecking: true }));
+        if (isMounted.current) {
+          setStatus(prev => ({ ...prev, isChecking: true }));
+        }
+        
         // Use a direct status endpoint with a short timeout
         const response = await axiosInstance.get('/status');
         
+        if (isMounted.current) {
+          setStatus({
+            isConnected: true,
+            isChecking: false,
+            lastChecked: new Date(),
+            version: response.data.version || 'unknown',
+            error: null,
+          });
+          console.log("Backend connection successful:", response.data);
+        }
+      } catch (error) {
+        if (isMounted.current) {
+          console.error("Backend connection error:", error.message);
+          setStatus({
+            isConnected: false,
+            isChecking: false,
+            lastChecked: new Date(),
+            version: null,
+            error: error.message || 'Failed to connect to backend',
+          });
+        }
+      } finally {
+        isPolling = false;
+      }
+    };
+
+    // Check backend status on mount
+    checkBackendStatus();
+
+    // Set up polling with a safer approach
+    const setupNextPoll = () => {
+      if (!isMounted.current) return;
+      
+      const interval = status.isConnected ? 30000 : 10000;
+      timeoutId = setTimeout(() => {
+        if (!isMounted.current) return;
+        
+        if (!status.isConnected) {
+          console.log("Retrying backend connection...");
+        }
+        checkBackendStatus().finally(() => {
+          setupNextPoll();
+        });
+      }, interval);
+    };
+
+    setupNextPoll();
+    
+    // Cleanup function
+    return () => {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+    };
+  }, [status.isConnected]);
+
+  const reconnect = async () => {
+    if (!isMounted.current) return false;
+    
+    setStatus(prev => ({ ...prev, isChecking: true }));
+    
+    try {
+      console.log("Manually reconnecting to backend...");
+      const response = await axiosInstance.get('/status');
+      
+      if (isMounted.current) {
         setStatus({
           isConnected: true,
           isChecking: false,
@@ -39,9 +119,13 @@ export const BackendProvider = ({ children }) => {
           version: response.data.version || 'unknown',
           error: null,
         });
-        console.log("Backend connection successful:", response.data);
-      } catch (error) {
-        console.error("Backend connection error:", error.message);
+        
+        console.log("Manual reconnection successful");
+      }
+      return true;
+    } catch (error) {
+      if (isMounted.current) {
+        console.error("Manual reconnection failed:", error.message);
         setStatus({
           isConnected: false,
           isChecking: false,
@@ -50,47 +134,6 @@ export const BackendProvider = ({ children }) => {
           error: error.message || 'Failed to connect to backend',
         });
       }
-    };
-
-    // Check backend status on mount
-    checkBackendStatus();
-
-    // Set up polling with increasing intervals on failure
-    const intervalId = setInterval(() => {
-      if (!status.isConnected) {
-        console.log("Retrying backend connection...");
-      }
-      checkBackendStatus();
-    }, status.isConnected ? 30000 : 10000); // Check less frequently to avoid too many requests
-    
-    return () => clearInterval(intervalId);
-  }, [status.isConnected]);
-
-  const reconnect = async () => {
-    setStatus(prev => ({ ...prev, isChecking: true }));
-    try {
-      console.log("Manually reconnecting to backend...");
-      const response = await axiosInstance.get('/status');
-      
-      setStatus({
-        isConnected: true,
-        isChecking: false,
-        lastChecked: new Date(),
-        version: response.data.version || 'unknown',
-        error: null,
-      });
-      
-      console.log("Manual reconnection successful");
-      return true;
-    } catch (error) {
-      console.error("Manual reconnection failed:", error.message);
-      setStatus({
-        isConnected: false,
-        isChecking: false,
-        lastChecked: new Date(),
-        version: null,
-        error: error.message || 'Failed to connect to backend',
-      });
       return false;
     }
   };
