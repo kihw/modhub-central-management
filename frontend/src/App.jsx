@@ -1,9 +1,9 @@
-import React, { Suspense } from "react";
+import React, { Suspense, useState, useEffect } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import { Provider } from "react-redux";
 import { PersistGate } from "redux-persist/integration/react";
 import { store, persistor } from "./redux/store";
-import { ToastContainer } from "react-toastify";
+import { ToastContainer, toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import "./styles/App.css";
 
@@ -17,6 +17,7 @@ import ErrorBoundary from "./components/ErrorBoundary";
 import ConnectionError from "./components/ConnectionError";
 import Loading from "./components/Loading";
 import KeyedRender from "./components/KeyedRender";
+import ConnectivityChecker from "./components/ConnectivityChecker";
 
 // Lazily load pages for better performance
 const Dashboard = React.lazy(() => import("./pages/Dashboard"));
@@ -36,6 +37,34 @@ const PageLoading = () => (
 // App content with connection check
 const AppContent = () => {
   const { isConnected, isChecking, error, reconnect } = useBackend();
+  const [showConnectivityDetails, setShowConnectivityDetails] = useState(false);
+  const [connectionAttempts, setConnectionAttempts] = useState(0);
+
+  // Handle backend connectivity events
+  const handleConnectivityChange = (isConnected, details) => {
+    if (isConnected) {
+      if (connectionAttempts > 0) {
+        toast.success("Connexion au serveur backend rétablie !", {
+          position: "bottom-right",
+          autoClose: 3000,
+        });
+      }
+      setConnectionAttempts(0);
+    } else {
+      setConnectionAttempts(prev => prev + 1);
+      
+      // Show notification after failed connection
+      toast.error(
+        `Problème de connexion au serveur backend. ${
+          details?.error ? `Erreur: ${details.error}` : ""
+        }`,
+        {
+          position: "bottom-right",
+          autoClose: 5000,
+        }
+      );
+    }
+  };
 
   if (isChecking) {
     return (
@@ -55,6 +84,13 @@ const AppContent = () => {
             onRetry={reconnect}
             error={error}
           />
+          
+          <div className="mt-4">
+            <ConnectivityChecker 
+              checkInterval={5000} 
+              onStatusChange={handleConnectivityChange}
+            />
+          </div>
         </div>
       </div>
     );
@@ -64,6 +100,39 @@ const AppContent = () => {
     <MainLayout>
       <Sidebar />
       <div className="content-container flex-1 overflow-auto">
+        {/* Backend connectivity mini indicator */}
+        <div 
+          className="fixed top-2 right-2 z-50 cursor-pointer"
+          onClick={() => setShowConnectivityDetails(!showConnectivityDetails)}
+        >
+          <ConnectivityChecker 
+            showMiniDisplay={!showConnectivityDetails} 
+            checkInterval={30000}
+            onStatusChange={handleConnectivityChange}
+            className="bg-white/80 dark:bg-gray-800/80 rounded-full p-1 shadow-md"
+          />
+        </div>
+        
+        {/* Detailed connectivity panel - shown when clicked */}
+        {showConnectivityDetails && (
+          <div className="fixed top-10 right-2 z-50 w-64 shadow-lg animate-fadeIn">
+            <div className="flex justify-between items-center p-2 bg-gray-200 dark:bg-gray-700 rounded-t-lg">
+              <h3 className="text-sm font-medium">Statut du Backend</h3>
+              <button 
+                className="text-gray-500 hover:text-gray-700 dark:text-gray-300 dark:hover:text-gray-100"
+                onClick={() => setShowConnectivityDetails(false)}
+              >
+                ×
+              </button>
+            </div>
+            <ConnectivityChecker 
+              checkInterval={30000}
+              onStatusChange={handleConnectivityChange}
+              className="rounded-t-none shadow-none"
+            />
+          </div>
+        )}
+        
         {/* Use Suspense for lazy loading */}
         <Suspense fallback={<PageLoading />}>
           <Routes>
