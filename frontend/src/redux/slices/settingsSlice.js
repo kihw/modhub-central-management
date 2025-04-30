@@ -1,76 +1,6 @@
-import { createSlice, PayloadAction } from '@reduxjs/toolkit';
-import { RootState } from '../store';
+import { createSlice } from '@reduxjs/toolkit';
 
-type Theme = 'light' | 'dark' | 'system';
-type ResourceUsage = 'low' | 'medium' | 'high';
-type LoggingLevel = 'minimal' | 'normal' | 'verbose';
-type ConflictResolution = 'priority' | 'manual';
-type DashboardLayout = 'grid' | 'list';
-
-interface NotificationSettings {
-  enabled: boolean;
-  showModActivations: boolean;
-  showModErrors: boolean;
-  showSystemEvents: boolean;
-}
-
-interface GeneralSettings {
-  startWithWindows: boolean;
-  minimizeToTray: boolean;
-  checkForUpdates: boolean;
-  theme: Theme;
-  language: string;
-  notifications: NotificationSettings;
-}
-
-interface AutomationSettings {
-  scanInterval: number;
-  enableAutoMode: boolean;
-  conflictResolution: ConflictResolution;
-  applyDelay: number;
-}
-
-interface PerformanceSettings {
-  resourceUsageLimit: ResourceUsage;
-  loggingLevel: LoggingLevel;
-  enableMetrics: boolean;
-}
-
-interface DeveloperSettings {
-  enableDevTools: boolean;
-  showAdvancedOptions: boolean;
-  experimentalFeatures: boolean;
-}
-
-interface UISettings {
-  sidebarCollapsed: boolean;
-  dashboardLayout: DashboardLayout;
-  showActiveModsOnTop: boolean;
-  animationsEnabled: boolean;
-}
-
-interface UserPreferences {
-  defaultMod: string | null;
-  favoriteApps: string[];
-}
-
-interface UserSettings {
-  profileId: string | null;
-  userName: string;
-  userEmail: string;
-  preferences: UserPreferences;
-}
-
-interface SettingsState {
-  general: GeneralSettings;
-  automation: AutomationSettings;
-  performance: PerformanceSettings;
-  developer: DeveloperSettings;
-  ui: UISettings;
-  user: UserSettings;
-}
-
-const initialState: SettingsState = {
+const initialState = {
   general: {
     startWithWindows: true,
     minimizeToTray: true,
@@ -121,29 +51,29 @@ const settingsSlice = createSlice({
   name: 'settings',
   initialState,
   reducers: {
-    updateGeneralSettings: (state, action: PayloadAction<Partial<GeneralSettings>>) => {
+    updateGeneralSettings: (state, action) => {
       state.general = { ...state.general, ...action.payload };
     },
-    updateAutomationSettings: (state, action: PayloadAction<Partial<AutomationSettings>>) => {
+    updateAutomationSettings: (state, action) => {
       state.automation = { ...state.automation, ...action.payload };
     },
-    updatePerformanceSettings: (state, action: PayloadAction<Partial<PerformanceSettings>>) => {
+    updatePerformanceSettings: (state, action) => {
       state.performance = { ...state.performance, ...action.payload };
     },
-    updateDeveloperSettings: (state, action: PayloadAction<Partial<DeveloperSettings>>) => {
+    updateDeveloperSettings: (state, action) => {
       state.developer = { ...state.developer, ...action.payload };
     },
-    updateUISettings: (state, action: PayloadAction<Partial<UISettings>>) => {
+    updateUISettings: (state, action) => {
       state.ui = { ...state.ui, ...action.payload };
     },
-    updateUserSettings: (state, action: PayloadAction<Partial<UserSettings>>) => {
+    updateUserSettings: (state, action) => {
       state.user = { ...state.user, ...action.payload };
     },
-    updateNotificationSettings: (state, action: PayloadAction<Partial<NotificationSettings>>) => {
+    updateNotificationSettings: (state, action) => {
       state.general.notifications = { ...state.general.notifications, ...action.payload };
     },
     toggleTheme: (state) => {
-      const themes: Theme[] = ['light', 'dark', 'system'];
+      const themes = ['light', 'dark', 'system'];
       const currentIndex = themes.indexOf(state.general.theme);
       state.general.theme = themes[(currentIndex + 1) % themes.length];
     },
@@ -151,7 +81,7 @@ const settingsSlice = createSlice({
       state.ui.sidebarCollapsed = !state.ui.sidebarCollapsed;
     },
     resetSettings: () => initialState,
-    importSettings: (state, action: PayloadAction<DeepPartial<SettingsState>>) => ({
+    importSettings: (state, action) => ({
       ...initialState,
       ...action.payload,
     }),
@@ -172,15 +102,13 @@ export const {
   importSettings,
 } = settingsSlice.actions;
 
-export const selectGeneralSettings = (state: RootState) => state.settings.general;
-export const selectAutomationSettings = (state: RootState) => state.settings.automation;
-export const selectPerformanceSettings = (state: RootState) => state.settings.performance;
-export const selectDeveloperSettings = (state: RootState) => state.settings.developer;
-export const selectUISettings = (state: RootState) => state.settings.ui;
-export const selectUserSettings = (state: RootState) => state.settings.user;
-export const selectTheme = (state: RootState) => state.settings.general.theme;
-export const selectNotificationSettings = (state: RootState) => state.settings.general.notifications;
-
-type DeepPartial<T> = T extends object ? { [P in keyof T]?: DeepPartial<T[P]> } : T;
+export const selectGeneralSettings = state => state.settings.general;
+export const selectAutomationSettings = state => state.settings.automation;
+export const selectPerformanceSettings = state => state.settings.performance;
+export const selectDeveloperSettings = state => state.settings.developer;
+export const selectUISettings = state => state.settings.ui;
+export const selectUserSettings = state => state.settings.user;
+export const selectTheme = state => state.settings.general.theme;
+export const selectNotificationSettings = state => state.settings.general.notifications;
 
 export default settingsSlice.reducer;
