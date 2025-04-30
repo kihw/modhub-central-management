@@ -13,16 +13,24 @@ export const BackendProvider = ({ children }) => {
     error: null,
   });
 
-  const API_URL = 'http://localhost:8668';
+  // Use relative URL to leverage the proxy configuration
+  const API_BASE_URL = '/api';
+
+  // Create axios instance with base URL
+  const axiosInstance = axios.create({
+    baseURL: API_BASE_URL,
+    timeout: 5000,
+    headers: {
+      'Content-Type': 'application/json',
+    }
+  });
 
   useEffect(() => {
     const checkBackendStatus = async () => {
       try {
         setStatus(prev => ({ ...prev, isChecking: true }));
         // Use a direct status endpoint with a short timeout
-        const response = await axios.get(`${API_URL}/api/status`, {
-          timeout: 3000
-        });
+        const response = await axiosInstance.get('/status');
         
         setStatus({
           isConnected: true,
@@ -53,7 +61,7 @@ export const BackendProvider = ({ children }) => {
         console.log("Retrying backend connection...");
       }
       checkBackendStatus();
-    }, status.isConnected ? 10000 : 5000); // Check more frequently if disconnected
+    }, status.isConnected ? 30000 : 10000); // Check less frequently to avoid too many requests
     
     return () => clearInterval(intervalId);
   }, [status.isConnected]);
@@ -62,9 +70,7 @@ export const BackendProvider = ({ children }) => {
     setStatus(prev => ({ ...prev, isChecking: true }));
     try {
       console.log("Manually reconnecting to backend...");
-      const response = await axios.get(`${API_URL}/api/status`, {
-        timeout: 3000
-      });
+      const response = await axiosInstance.get('/status');
       
       setStatus({
         isConnected: true,
@@ -89,11 +95,21 @@ export const BackendProvider = ({ children }) => {
     }
   };
 
+  // Provide the API client to components
+  const apiClient = {
+    get: (endpoint, config) => axiosInstance.get(endpoint, config),
+    post: (endpoint, data, config) => axiosInstance.post(endpoint, data, config),
+    put: (endpoint, data, config) => axiosInstance.put(endpoint, data, config),
+    patch: (endpoint, data, config) => axiosInstance.patch(endpoint, data, config),
+    delete: (endpoint, config) => axiosInstance.delete(endpoint, config),
+  };
+
   return (
     <BackendContext.Provider value={{ 
       ...status, 
       reconnect,
-      backendUrl: API_URL
+      apiClient,
+      backendUrl: API_BASE_URL
     }}>
       {children}
     </BackendContext.Provider>
