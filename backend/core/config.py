@@ -13,6 +13,7 @@ class ModHubSettings(BaseSettings):
     HOST: str = Field("127.0.0.1", validation_alias="MODHUB_HOST")
     PORT: int = Field(8668, validation_alias="MODHUB_PORT", ge=1024, le=65535)
     DEBUG: bool = Field(False, validation_alias="MODHUB_DEBUG")
+    WORKERS: int = Field(1, validation_alias="MODHUB_WORKERS", ge=1, le=32)
     
     DB_TYPE: str = Field("sqlite", validation_alias="MODHUB_DB_TYPE")
     DB_PATH: str = Field("database.sqlite", validation_alias="MODHUB_DB_PATH")
@@ -21,6 +22,8 @@ class ModHubSettings(BaseSettings):
     DB_NAME: Optional[str] = Field(None, validation_alias="MODHUB_DB_NAME")
     DB_USER: Optional[str] = Field(None, validation_alias="MODHUB_DB_USER")
     DB_PASSWORD: Optional[str] = Field(None, validation_alias="MODHUB_DB_PASSWORD")
+    DB_POOL_SIZE: int = Field(5, validation_alias="MODHUB_DB_POOL_SIZE", ge=1, le=100)
+    DB_MAX_OVERFLOW: int = Field(10, validation_alias="MODHUB_DB_MAX_OVERFLOW", ge=0, le=100)
     
     APP_NAME: str = Field("ModHub Central", validation_alias="MODHUB_APP_NAME")
     APP_VERSION: str = Field("0.2.0", validation_alias="MODHUB_APP_VERSION")
