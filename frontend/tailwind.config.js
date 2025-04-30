@@ -86,8 +86,8 @@ module.exports = {
   plugins: [
     require("@tailwindcss/forms"),
     require("@tailwindcss/typography"),
-    require("@tailwindcss/aspect-ratio"),
-    require("@tailwindcss/line-clamp")
+    require("@tailwindcss/aspect-ratio")
+    // line-clamp is now included in Tailwind CSS core as of v3.3
   ],
   darkMode: "class"
 }
