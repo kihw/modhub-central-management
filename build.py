@@ -8,13 +8,23 @@ import shutil
 from pathlib import Path
 from typing import Optional, Dict, Union, List
 
+from requests import Session
+from backend.core.mods.mod_manager import ModStatus, get_mods, ModBase
+from backend.db.database import get_db
+from fastapi import Depends, logger
+
 ROOT_DIR = Path(__file__).resolve().parent
 BACKEND_DIR = ROOT_DIR / "backend"
 FRONTEND_DIR = ROOT_DIR / "frontend"
 DIST_DIR = ROOT_DIR / "dist"
 BUILD_DIR = ROOT_DIR / "build"
 
-def is_tool_available(command: str) -> bool:
+
+
+@router.get("/active/count", response_model=Dict[str, int])
+async def get_active_mods_count(db: Session = Depends(get_db)) -> Dict[str, int]:
+    active_mods_count = len(get_mods(db, active=True))
+    return {"count": active_mods_count}
     if not command:
         return False
     try:
@@ -158,5 +168,56 @@ def main() -> int:
     print(f"\nBuild completed successfully. Distribution files available in: {DIST_DIR}")
     return 0
 
+def activate_mod(self, mod_id: str, config: Optional[Dict[str, Any]] = None) -> bool:
+    with self._mod_lock:
+        mod_state = self._mods.get(mod_id)
+        if not mod_state or mod_state.status == ModStatus.ACTIVE:
+            return False
+
+        try:
+            # Gestion des conflits de mods
+            conflicts = self._check_conflicts(mod_state.instance)
+            if conflicts:
+                self._resolve_conflicts(mod_state.instance, conflicts)
+
+            if config:
+                mod_state.config.update(config)
+                mod_state.instance.update_config(mod_state.config)
+
+            if mod_state.instance.activate():
+                mod_state.status = ModStatus.ACTIVE
+                self._active_mods[mod_id] = mod_state.instance
+                return True
+                
+            mod_state.status = ModStatus.ERROR
+            return False
+        except Exception as e:
+            logger.error(f"Activation failed for mod {mod_id}: {str(e)}", exc_info=True)
+            mod_state.status = ModStatus.ERROR
+            return False
+
 if __name__ == "__main__":
     sys.exit(main())
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

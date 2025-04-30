@@ -42,6 +42,30 @@ const ApiService = {
       : this._requestWeb(method, endpoint, data, params);
   },
 
+  async _requestWeb(method, endpoint, data, params, retryCount = 0) {
+    try {
+      const config = { params };
+      const isGetOrDelete = ["get", "delete"].includes(method.toLowerCase());
+
+      return await apiClient.request({
+        method,
+        url: endpoint,
+        data: isGetOrDelete ? undefined : data,
+        ...config,
+      });
+    } catch (error) {
+      if (
+        error.message?.includes("Network Error") &&
+        retryCount < MAX_RETRIES
+      ) {
+        const delay = RETRY_DELAY_BASE * 2 ** retryCount;
+        await new Promise((resolve) => setTimeout(resolve, delay));
+        return this._requestWeb(method, endpoint, data, params, retryCount + 1);
+      }
+      throw error;
+    }
+  },
+
   async _requestElectron(method, endpoint, data, params) {
     const requestId = `${Date.now()}_${Math.random()
       .toString(36)
@@ -74,34 +98,32 @@ const ApiService = {
     });
   },
 
-  async _requestWeb(method, endpoint, data, params, retryCount = 0) {
+  // ✅ Ajouts corrigés
+  async fetchActiveModsCount() {
     try {
-      const config = { params };
-      const isGetOrDelete = ["get", "delete"].includes(method.toLowerCase());
-      fetchActiveModsCount = async () => {
-        try {
-          const response = await ApiService.request("get", "mods/active/count");
-          this.setState({ activeModsCount: response.data.count });
-        } catch (error) {
-          console.error("Failed to fetch active mods count:", error);
-        }
-      };
-      return await apiClient.request({
-        method,
-        url: endpoint,
-        data: isGetOrDelete ? undefined : data,
-        ...config,
-      });
+      const response = await this.request("get", "mods/active/count");
+      return response.data.count;
     } catch (error) {
-      if (
-        error.message?.includes("Network Error") &&
-        retryCount < MAX_RETRIES
-      ) {
-        const delay = RETRY_DELAY_BASE * 2 ** retryCount;
-        await new Promise((resolve) => setTimeout(resolve, delay));
-        return this._requestWeb(method, endpoint, data, params, retryCount + 1);
-      }
-      throw error;
+      console.error("Failed to fetch active mods count:", error);
+      return 0;
+    }
+  },
+
+  async fetchSystemResources() {
+    try {
+      return await this.request("get", "system/resources");
+    } catch (error) {
+      console.error("Failed to fetch system resources:", error);
+      return null;
+    }
+  },
+
+  async fetchProcesses() {
+    try {
+      return await this.request("get", "system/processes");
+    } catch (error) {
+      console.error("Failed to fetch processes:", error);
+      return [];
     }
   },
 

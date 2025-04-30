@@ -2,13 +2,13 @@ from fastapi import APIRouter, HTTPException, Depends, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 import logging
 from db.database import get_db
 from db.models import Mod
 from db.schemas import ModResponse, ModCreate, ModUpdate, ModToggle
 from db.crud import get_mods, get_mod, create_mod, update_mod, delete_mod, toggle_mod
-from core.mods.mod_manager import ModManager
+from core.mods.mod_manager import ModManager, ModStatus
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/mods", tags=["mods"])
@@ -158,3 +158,39 @@ async def get_active_mods_count(db: Session = Depends(get_db)) -> Dict[str, int]
         # Ajoutez du logging pour comprendre l'erreur
         print(f"Error in get_active_mods_count: {e}")
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+# Correctif Claude
+@router.get("/active/count", response_model=Dict[str, int])
+async def get_active_mods_count(db: Session = Depends(get_db)) -> Dict[str, int]:
+    active_mods_count = len(get_mods(db, active=True))
+    return {"count": active_mods_count}
+
+
+# Correctif Claude
+def activate_mod(self, mod_id: str, config: Optional[Dict[str, Any]] = None) -> bool:
+    with self._mod_lock:
+        mod_state = self._mods.get(mod_id)
+        if not mod_state or mod_state.status == ModStatus.ACTIVE:
+            return False
+
+        try:
+            # Gestion des conflits de mods
+            conflicts = self._check_conflicts(mod_state.instance)
+            if conflicts:
+                self._resolve_conflicts(mod_state.instance, conflicts)
+
+            if config:
+                mod_state.config.update(config)
+                mod_state.instance.update_config(mod_state.config)
+
+            if mod_state.instance.activate():
+                mod_state.status = ModStatus.ACTIVE
+                self._active_mods[mod_id] = mod_state.instance
+                return True
+                
+            mod_state.status = ModStatus.ERROR
+            return False
+        except Exception as e:
+            logger.error(f"Activation failed for mod {mod_id}: {str(e)}", exc_info=True)
+            mod_state.status = ModStatus.ERROR
+            return False
