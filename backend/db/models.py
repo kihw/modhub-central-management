@@ -140,7 +140,7 @@ class DeviceState(Base):
     device_type = Column(String(50), nullable=False, index=True)
     name = Column(String(100), nullable=False)
     state = Column(JSON, nullable=False)
-    metadata = Column(JSON, server_default="{}", nullable=False)
+    device_metadata = Column(JSON, server_default="{}", nullable=False) 
     timestamp = Column(DateTime(timezone=True), server_default="CURRENT_TIMESTAMP", nullable=False)
 
 class Variable(Base):
