@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field, validator, conint, confloat
-from typing import List, Optional, Dict, Any
+from typing import Annotated, List, Optional, Dict, Any
 from datetime import datetime
 from enum import Enum
 
@@ -43,14 +43,14 @@ class ModUpdate(BaseModel):
     priority: Optional[Priority] = None
 
 class ModResponse(ModBase):
-    id: conint(gt=0)
+    id: Annotated[int, Field(gt=0)]
     is_active: bool = False
     priority: Priority
     created_at: datetime
     updated_at: Optional[datetime] = None
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class ModToggle(BaseModel):
     enabled: bool
@@ -89,7 +89,7 @@ class ActionBase(BaseModel):
 class RuleBase(BaseModel):
     name: str = Field(..., min_length=3, max_length=50)
     description: Optional[str] = Field(None, max_length=200)
-    priority: conint(ge=1, le=10) = Field(default=5)
+    priority: Annotated[int, Field(ge=1, le=10)] = 5
 
 class RuleCreate(RuleBase):
     conditions: List[ConditionBase]
@@ -99,21 +99,21 @@ class RuleCreate(RuleBase):
 class RuleUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=3, max_length=50)
     description: Optional[str] = Field(None, max_length=200)
-    priority: Optional[conint(ge=1, le=10)] = None
+    priority: Optional[Annotated[int, Field(ge=1, le=10)]] = None
     conditions: Optional[List[ConditionBase]] = None
     actions: Optional[List[ActionBase]] = None
     enabled: Optional[bool] = None
 
 class RuleResponse(RuleBase):
-    id: conint(gt=0)
+    id: Annotated[int, Field(gt=0)]
     conditions: List[ConditionBase]
     actions: List[ActionBase]
     enabled: bool
     created_at: datetime
     updated_at: Optional[datetime] = None
 
-class Config:
-    from_attributes = True
+    class Config:
+        from_attributes = True
 
 class LogLevel(str, Enum):
     DEBUG = "debug"
@@ -130,11 +130,11 @@ class LogCreate(BaseModel):
     details: Dict[str, Any] = Field(default_factory=dict)
 
 class LogResponse(LogCreate):
-    id: conint(gt=0)
+    id: Annotated[int, Field(gt=0)]
     timestamp: datetime
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 class SettingsUpdate(BaseModel):
     general: Dict[str, Any] = Field(default_factory=dict)
@@ -146,24 +146,27 @@ class SettingsUpdate(BaseModel):
     def validate_settings(cls, v):
         return v or {}
 
+# For SystemInfoResponse:
 class SystemInfoResponse(BaseModel):
-    cpu_count: conint(gt=0)
-    total_memory: conint(ge=0)
-    total_disk: conint(ge=0)
+    cpu_count: Annotated[int, Field(gt=0)]
+    total_memory: Annotated[int, Field(ge=0)]
+    total_disk: Annotated[int, Field(ge=0)]
     version: str = Field("0.1.0", pattern=r'^\d+\.\d+\.\d+$')
     platform: str
     python_version: str
 
+# For ProcessResponse:
 class ProcessResponse(BaseModel):
-    pid: conint(gt=0)
+    pid: Annotated[int, Field(gt=0)]
     name: str
-    memory_percent: confloat(ge=0, le=100)
-    cpu_percent: confloat(ge=0, le=100)
+    memory_percent: Annotated[float, Field(ge=0, le=100)]
+    cpu_percent: Annotated[float, Field(ge=0, le=100)]
     status: str
     created_at: datetime
 
+# For ResourceUsageResponse:
 class ResourceUsageResponse(BaseModel):
-    cpu_percent: confloat(ge=0, le=100)
-    memory_percent: confloat(ge=0, le=100)
-    disk_percent: confloat(ge=0, le=100)
+    cpu_percent: Annotated[float, Field(ge=0, le=100)]
+    memory_percent: Annotated[float, Field(ge=0, le=100)]
+    disk_percent: Annotated[float, Field(ge=0, le=100)]
     timestamp: datetime

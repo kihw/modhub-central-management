@@ -26,7 +26,7 @@ class ProcessDetail(ProcessBase):
     is_monitored: bool = False
     
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "pid": 1234,
                 "name": "chrome.exe",

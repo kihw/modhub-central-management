@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import axios from "axios";
 import {
   FiCpu,
   FiMoon,
@@ -11,125 +12,127 @@ import {
 import { GiConsoleController } from "react-icons/gi";
 import { IoMdPulse } from "react-icons/io";
 
-// Mod status card component
-const ModStatusCard = ({
-  name,
-  icon: Icon,
-  color,
-  active,
-  description,
-  onToggle,
-}) => (
-  <div
-    className={`bg-white dark:bg-gray-800 rounded-lg shadow-md p-4 relative overflow-hidden ${
-      active ? "border-l-4 border-l-green-500" : "border-l-4 border-l-gray-300"
-    }`}
-  >
-    <div className="flex items-center justify-between">
-      <div className="flex items-center space-x-3">
-        <div className={`p-2 rounded-full ${color} bg-opacity-20`}>
-          <Icon className={`w-6 h-6 ${color}`} />
-        </div>
-        <div>
-          <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200">
-            {name}
-          </h3>
-          <p className="text-sm text-gray-500 dark:text-gray-400">
-            {description}
-          </p>
-        </div>
-      </div>
-      <label className="flex items-center cursor-pointer">
-        <div className="relative">
-          <input
-            type="checkbox"
-            className="sr-only"
-            checked={active}
-            onChange={onToggle}
-          />
-          <div
-            className={`w-10 h-4 ${
-              active ? "bg-green-400" : "bg-gray-400"
-            } rounded-full shadow-inner`}
-          ></div>
-          <div
-            className={`
-            dot absolute -left-1 -top-1 bg-white w-6 h-6 rounded-full shadow 
-            transition transform ${active ? "translate-x-full" : ""}
-          `}
-          ></div>
-        </div>
-      </label>
-    </div>
-    <div className={`absolute bottom-0 left-0 h-1 ${color} w-full`}></div>
-  </div>
-);
-
-// System Resource Card
-const SystemResourceCard = ({ title, icon: Icon, usage, color }) => (
-  <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-4 flex flex-col">
-    <div className="flex items-center justify-between mb-4">
-      <div className="flex items-center space-x-3">
-        <div className={`p-2 rounded-full ${color} bg-opacity-20`}>
-          <Icon className={`w-6 h-6 ${color}`} />
-        </div>
-        <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200">
-          {title}
-        </h3>
-      </div>
-      <span className="text-xl font-bold text-gray-800 dark:text-gray-200">
-        {usage}%
-      </span>
-    </div>
-    <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2.5">
-      <div
-        className={`${color} h-2.5 rounded-full`}
-        style={{ width: `${usage}%` }}
-      ></div>
-    </div>
-  </div>
-);
-
 const Dashboard = () => {
-  const [mods, setMods] = useState([
-    {
-      id: "gaming",
-      name: "Gaming Mod",
-      icon: GiConsoleController,
-      color: "text-red-500",
-      active: false,
-      description: "Optimise les paramètres pour le gaming",
-    },
-    {
-      id: "night",
-      name: "Night Mod",
-      icon: FiMoon,
-      color: "text-blue-500",
-      active: false,
-      description: "Mode nuit avec luminosité réduite",
-    },
-    {
-      id: "media",
-      name: "Media Mod",
-      icon: FiMusic,
-      color: "text-green-500",
-      active: false,
-      description: "Optimisation audio et vidéo",
-    },
-  ]);
-
+  const [mods, setMods] = useState([]);
   const [systemResources, setSystemResources] = useState({
-    cpu: 35,
-    memory: 62,
-    disk: 45,
+    cpu: 0,
+    memory: 0,
+    disk: 0,
   });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
-  const toggleMod = (modId) => {
-    setMods((prevMods) =>
-      prevMods.map((mod) =>
-        mod.id === modId ? { ...mod, active: !mod.active } : mod
-      )
-    );
+  // Fonction pour récupérer les mods depuis l'API
+  const fetchMods = async () => {
+    try {
+      setLoading(true);
+      const response = await axios.get("/api/mods");
+
+      // Mappage des données de l'API au format attendu par l'interface
+      const modsData = response.data.map((mod) => ({
+        id: mod.id,
+        name: mod.name,
+        description: mod.description,
+        active: mod.active || false,
+        icon: getIconForModType(mod.type),
+        color: getColorForModType(mod.type),
+      }));
+
+      setMods(modsData);
+      setError(null);
+    } catch (err) {
+      console.error("Erreur lors du chargement des mods:", err);
+      setError("Impossible de charger les mods. Veuillez réessayer plus tard.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Fonction pour récupérer les ressources système depuis l'API
+  const fetchSystemResources = async () => {
+    try {
+      const response = await axios.get("/api/system/resources/current");
+      setSystemResources({
+        cpu: response.data.cpu_percent || 0,
+        memory: response.data.memory_usage || 0,
+        disk: response.data.disk_usage || 0,
+      });
+    } catch (err) {
+      console.error("Erreur lors du chargement des ressources système:", err);
+    }
+  };
+
+  // Fonction utilitaire pour obtenir l'icône correspondant au type de mod
+  const getIconForModType = (type) => {
+    switch (type) {
+      case "gaming":
+        return GiConsoleController;
+      case "night":
+        return FiMoon;
+      case "media":
+        return FiMusic;
+      default:
+        return FiPlus;
+    }
+  };
+
+  // Fonction utilitaire pour obtenir la couleur correspondant au type de mod
+  const getColorForModType = (type) => {
+    switch (type) {
+      case "gaming":
+        return "text-red-500";
+      case "night":
+        return "text-blue-500";
+      case "media":
+        return "text-green-500";
+      default:
+        return "text-purple-500";
+    }
+  };
+
+  // Chargement initial des données
+  useEffect(() => {
+    fetchMods();
+    fetchSystemResources();
+
+    // Actualisation périodique des ressources système
+    const intervalId = setInterval(fetchSystemResources, 5000);
+
+    return () => clearInterval(intervalId);
+  }, []);
+
+  // Fonction pour basculer l'activation d'un mod
+  const toggleMod = async (modId) => {
+    try {
+      const modToUpdate = mods.find((mod) => mod.id === modId);
+      if (!modToUpdate) return;
+
+      // Optimistic update
+      setMods((prevMods) =>
+        prevMods.map((mod) =>
+          mod.id === modId ? { ...mod, active: !mod.active } : mod
+        )
+      );
+
+      // Call API to update mod status
+      await axios.post(`/api/mods/${modId}/toggle`, {
+        enabled: !modToUpdate.active,
+      });
+
+      // Refresh mods to get accurate state
+      fetchMods();
+    } catch (error) {
+      console.error(`Erreur lors du basculement du mod ${modId}:`, error);
+
+      // Revert optimistic update on error
+      setMods((prevMods) =>
+        prevMods.map((mod) =>
+          mod.id === modId ? { ...mod, active: !mod.active } : mod
+        )
+      );
+
+      // Show error to user (could use a toast notification here)
+    }
   };
 
   const refreshSystemResources = () => {

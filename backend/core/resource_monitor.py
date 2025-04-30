@@ -258,31 +258,29 @@ class SystemResourceMonitor:
                 logger.debug(f"Error in alternative GPU detection: {e}")
 
         return gpu_metrics
+    # Add this method to the SystemResourceMonitor class in backend/core/resource_monitor.py
+    def _collect_temperatures(self) -> List[Dict[str, Any]]:
+        """Collect temperature information from system sensors"""
+        temperatures = []
+        try:
+            if hasattr(psutil, "sensors_temperatures"):
+                temps = psutil.sensors_temperatures()
+                if temps:
+                    for name, entries in temps.items():
+                        for entry in entries:
+                            if hasattr(entry, "current") and entry.current is not None:
+                                temperatures.append({
+                                    "sensor": name,
+                                    "label": entry.label or "Unknown",
+                                    "temperature": entry.current,
+                                    "high": entry.high if hasattr(entry, "high") else None,
+                                    "critical": entry.critical if hasattr(entry, "critical") else None
+                                })
+        except Exception as e:
+            logger.debug(f"Error collecting temperature data: {e}")
 
-        def _collect_temperatures(self) -> List[Dict[str, Any]]:
-            """Collect temperature information from system sensors"""
-            temperatures = []
-            try:
-                if hasattr(psutil, "sensors_temperatures"):
-                    temps = psutil.sensors_temperatures()
-                    if temps:
-                        for name, entries in temps.items():
-                            for entry in entries:
-                                if hasattr(entry, "current") and entry.current is not None:
-                                    temperatures.append({
-                                        "sensor": name,
-                                        "label": entry.label or "Unknown",
-                                        "temperature": entry.current,
-                                        "high": entry.high if hasattr(entry, "high") else None,
-                                        "critical": entry.critical if hasattr(entry, "critical") else None
-                                    })
-            except Exception as e:
-                logger.debug(f"Error collecting temperature data: {e}")
+        return temperatures
 
-            return temperatures
-
-    
-    
     def _update_peak_metrics(self, resource_usage: ResourceUsage) -> None:
         """Update peak resource metrics"""
         with self._lock:

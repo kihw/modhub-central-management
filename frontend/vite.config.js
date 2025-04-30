@@ -81,7 +81,6 @@ export default defineConfig({
         timeout: 60000,
       },
       "/health": {
-        // Ajoutez cette configuration spécifique
         target: "http://localhost:8668",
         changeOrigin: true,
         secure: false,
@@ -90,6 +89,7 @@ export default defineConfig({
         timeout: 60000,
       },
     },
+
     cors: true,
     watch: {
       usePolling: true,

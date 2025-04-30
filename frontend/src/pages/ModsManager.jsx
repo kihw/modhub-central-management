@@ -17,43 +17,22 @@ const ModsManager = () => {
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    // Fonction pour charger les mods
     const fetchMods = async () => {
       try {
         setLoading(true);
-        // Ici, vous feriez normalement un appel API
-        // const response = await fetch('/api/mods');
-        // const data = await response.json();
+        const response = await axios.get("/api/mods");
 
-        // Pour l'instant, utilisons des données factices
-        const mockData = [
-          {
-            id: "gaming",
-            name: "Gaming Mod",
-            description: "Optimise vos périphériques pour le gaming",
-            active: false,
-            icon: FaGamepad,
-            color: "bg-red-600",
-          },
-          {
-            id: "night",
-            name: "Night Mod",
-            description: "Ajuste la luminosité et active le mode nuit",
-            active: false,
-            icon: FaMoon,
-            color: "bg-blue-800",
-          },
-          {
-            id: "media",
-            name: "Media Mod",
-            description: "Optimise les paramètres audio et d'éclairage",
-            active: false,
-            icon: FaMusic,
-            color: "bg-green-600",
-          },
-        ];
+        // Mappage des données de l'API au format attendu par l'interface
+        const modsData = response.data.map((mod) => ({
+          id: mod.id,
+          name: mod.name,
+          description: mod.description || "Aucune description disponible",
+          active: mod.active || false,
+          icon: getIconForModType(mod.type),
+          color: getColorForModType(mod.type),
+        }));
 
-        setMods(mockData);
+        setMods(modsData);
         setError(null);
       } catch (err) {
         setError(

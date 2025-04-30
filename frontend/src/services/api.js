@@ -19,31 +19,33 @@ const apiClient = axios.create({
 });
 
 const handleError = (error) => {
-  const errorLog = JSON.parse(sessionStorage.getItem('api_errors') || '[]');
+  const errorLog = JSON.parse(sessionStorage.getItem("api_errors") || "[]");
   errorLog.unshift({
     timestamp: new Date().toISOString(),
     url: error.config?.url,
     method: error.config?.method,
-    status: error.response?.status || 'network_error',
-    message: error.message
+    status: error.response?.status || "network_error",
+    message: error.message,
   });
   errorLog.length = Math.min(errorLog.length, MAX_ERROR_LOG);
-  sessionStorage.setItem('api_errors', JSON.stringify(errorLog));
+  sessionStorage.setItem("api_errors", JSON.stringify(errorLog));
   return Promise.reject(error);
 };
 
-apiClient.interceptors.response.use(response => response, handleError);
+apiClient.interceptors.response.use((response) => response, handleError);
 
 const ApiService = {
   async request(method, endpoint, data = null, params = null) {
-    if (!endpoint.startsWith('/')) endpoint = '/' + endpoint;
-    return isElectron 
+    if (!endpoint.startsWith("/")) endpoint = "/" + endpoint;
+    return isElectron
       ? this._requestElectron(method, endpoint, data, params)
       : this._requestWeb(method, endpoint, data, params);
   },
 
   async _requestElectron(method, endpoint, data, params) {
-    const requestId = `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+    const requestId = `${Date.now()}_${Math.random()
+      .toString(36)
+      .slice(2, 10)}`;
     const responseChannel = `api_response_${requestId}`;
 
     return new Promise((resolve, reject) => {
@@ -75,7 +77,7 @@ const ApiService = {
   async _requestWeb(method, endpoint, data, params, retryCount = 0) {
     try {
       const config = { params };
-      const isGetOrDelete = ['get', 'delete'].includes(method.toLowerCase());
+      const isGetOrDelete = ["get", "delete"].includes(method.toLowerCase());
       fetchActiveModsCount = async () => {
         try {
           const response = await ApiService.request("get", "mods/active/count");
@@ -84,9 +86,19 @@ const ApiService = {
           console.error("Failed to fetch active mods count:", error);
         }
       };
-      if (error.message?.includes('Network Error') && retryCount < MAX_RETRIES) {
-        const delay = RETRY_DELAY_BASE * (2 ** retryCount);
-        await new Promise(resolve => setTimeout(resolve, delay));
+      return await apiClient.request({
+        method,
+        url: endpoint,
+        data: isGetOrDelete ? undefined : data,
+        ...config,
+      });
+    } catch (error) {
+      if (
+        error.message?.includes("Network Error") &&
+        retryCount < MAX_RETRIES
+      ) {
+        const delay = RETRY_DELAY_BASE * 2 ** retryCount;
+        await new Promise((resolve) => setTimeout(resolve, delay));
         return this._requestWeb(method, endpoint, data, params, retryCount + 1);
       }
       throw error;
@@ -96,11 +108,14 @@ const ApiService = {
   getSystemStatus: () => ApiService.request("get", "status"),
   getMods: () => ApiService.request("get", "mods"),
   getModById: (modId) => ApiService.request("get", `mods/${modId}`),
-  toggleMod: (modId, enabled) => ApiService.request("post", `mods/${modId}/toggle`, { enabled }),
-  updateModSettings: (modId, settings) => ApiService.request("put", `mods/${modId}/settings`, settings),
+  toggleMod: (modId, enabled) =>
+    ApiService.request("post", `mods/${modId}/toggle`, { enabled }),
+  updateModSettings: (modId, settings) =>
+    ApiService.request("put", `mods/${modId}/settings`, settings),
   getRules: () => ApiService.request("get", "automation"),
   createRule: (rule) => ApiService.request("post", "automation", rule),
-  updateRule: (ruleId, rule) => ApiService.request("put", `automation/${ruleId}`, rule),
+  updateRule: (ruleId, rule) =>
+    ApiService.request("put", `automation/${ruleId}`, rule),
   deleteRule: (ruleId) => ApiService.request("delete", `automation/${ruleId}`),
   getRunningProcesses: () => ApiService.request("get", "system/processes"),
   getResourceUsage: () => ApiService.request("get", "system/resources"),
@@ -109,15 +124,15 @@ const ApiService = {
 
   getLastErrors() {
     try {
-      return JSON.parse(sessionStorage.getItem('api_errors') || '[]');
+      return JSON.parse(sessionStorage.getItem("api_errors") || "[]");
     } catch {
       return [];
     }
   },
 
   clearErrorLog() {
-    sessionStorage.removeItem('api_errors');
-  }
+    sessionStorage.removeItem("api_errors");
+  },
 };
 
 export default ApiService;

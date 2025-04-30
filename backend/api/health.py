@@ -32,14 +32,15 @@ START_TIME = time.time()
 
 logger = logging.getLogger(__name__)
 
+
 def check_database_connection():
     try:
         from db.database import db_session
-        from db.models import Setting
+        from sqlalchemy import text
         
         with db_session() as session:
-            # Effectuer une requête simple qui ne dépend pas d'une table spécifique
-            session.execute("SELECT 1").scalar()
+            # Use text() to explicitly declare the SQL statement
+            session.execute(text("SELECT 1")).scalar()
             return "ok"
     except Exception as e:
         logger.error(f"Database connection check failed: {e}")
