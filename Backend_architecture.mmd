@@ -1,0 +1,58 @@
+graph TD
+subgraph API
+A[FastAPI Application] --> H[Health API]
+A --> M[Mods API]
+A --> AU[Automation API]
+A --> S[Settings API]
+A --> P[Plugins API]
+
+        subgraph System API
+            A --> SYS[System API]
+            SYS --> SYS_P[Processes API]
+            SYS --> SYS_R[Resources API]
+        end
+    end
+
+    subgraph Core
+        C[Core Modules] --> CM[Mod Manager]
+        C --> CE[Events Manager]
+        C --> CA[Alert Manager]
+        C --> CP[Plugin Manager]
+        C --> CPM[Process Monitor]
+        C --> CRM[Resource Monitor]
+        C --> CAU[Automation Engine]
+        CA -.-> CE
+    end
+
+    subgraph Database
+        D[Database] --> DM[Models]
+        D --> DCR[CRUD Operations]
+        D --> DS[Schemas]
+    end
+
+    subgraph Mods
+        MM[Mod Types] --> MM_G[Gaming Mod]
+        MM --> MM_N[Night Mod]
+        MM --> MM_M[Media Mod]
+        MM --> MM_C[Custom Mods]
+    end
+
+    M <--> CM
+    AU <--> CAU
+    SYS_P <--> CPM
+    SYS_R <--> CRM
+    P <--> CP
+    CM <--> MM
+    CAU --> CM
+    DCR <--> DM
+    A --> D
+
+    classDef api fill:#f9d0c4,stroke:#333,stroke-width:1px;
+    classDef core fill:#c4e3f9,stroke:#333,stroke-width:1px;
+    classDef database fill:#c6f9c4,stroke:#333,stroke-width:1px;
+    classDef mods fill:#f9c4f7,stroke:#333,stroke-width:1px;
+
+    class A,H,M,AU,S,P,SYS,SYS_P,SYS_R api;
+    class C,CM,CE,CA,CP,CPM,CRM,CAU core;
+    class D,DM,DCR,DS database;
+    class MM,MM_G,MM_N,MM_M,MM_C mods;
