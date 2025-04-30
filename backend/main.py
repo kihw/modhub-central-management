@@ -67,12 +67,14 @@ class ApplicationInitializer:
             self.logger.error(f"Database initialization error: {str(e)}")
             raise
 
-    def load_plugins(self) -> None:
+    async def load_plugins(self) -> None:
         try:
-            discovered_plugins = self.plugin_manager.discover_plugins()
-            self.plugin_manager.load_all_plugins()
+            discovered_plugins = await self.plugin_manager.discover_plugins()
+            plugin_results = await self.plugin_manager.load_all_plugins()
+            
+            loaded_count = sum(1 for success in plugin_results.values() if success)
             self.system_status['plugins'] = True
-            self.logger.info(f"Loaded {len(discovered_plugins)} plugins successfully")
+            self.logger.info(f"Discovered {len(discovered_plugins)} plugins, loaded {loaded_count} successfully")
         except Exception as e:
             self.system_status['plugins'] = False
             capture_exception(e, "Plugin loading failed")
@@ -106,7 +108,7 @@ class ApplicationInitializer:
         async def lifespan(app: FastAPI):
             try:
                 await self.initialize_database()
-                self.load_plugins()
+                await self.load_plugins()
                 await self.check_external_services()
                 await startup_events()
                 yield {"system_status": self.system_status, "dependencies": self.dependencies}
@@ -200,5 +202,5 @@ if __name__ == "__main__":
         port=settings.PORT,
         reload=settings.DEBUG,
         log_level=settings.LOG_LEVEL.lower(),
-        workers=getattr(settings, "WORKERS", 1)
+        workers=settings.WORKERS
     )
