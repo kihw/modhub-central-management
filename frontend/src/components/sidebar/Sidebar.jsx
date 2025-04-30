@@ -22,14 +22,10 @@ const Sidebar = (props) => {
 
   useEffect(() => {
     // Fetch active mods count from API with error handling
-
     const fetchActiveModsCount = async () => {
-      setIsLoading(true);
       try {
-        const response = await axios.get("/mods/active/count", {
-          baseURL: process.env.NODE_ENV === "development" 
-            ? "http://localhost:8668/api" // Suppression du double "/api"
-            : "/api",
+        // Utilisez le chemin relatif avec le préfixe /api
+        const response = await axios.get("/api/mods/active/count", {
           timeout: 5000,
           headers: {
             "Content-Type": "application/json",
@@ -37,14 +33,19 @@ const Sidebar = (props) => {
           },
         });
 
-        setActiveModCount(response.data.active_count);
+        setActiveModCount(response.data.count);
         setFetchError(false);
       } catch (error) {
         console.error("Failed to fetch active mods count:", error);
+        // Ajoutez plus de détails de débogage
+        console.error("Full error details:", {
+          message: error.message,
+          response: error.response,
+          request: error.request,
+          config: error.config,
+        });
         setFetchError(true);
         setActiveModCount(0);
-      } finally {
-        setIsLoading(false);
       }
     };
 

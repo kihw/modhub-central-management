@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends, status
 from sqlalchemy.orm import Session
-from typing import List, Optional
+from typing import Dict, List, Optional
 import logging
 from db.database import get_db
 from db.models import Mod
@@ -121,11 +121,12 @@ async def apply_mod(
             detail="Failed to apply mod"
         )
     
-@router.get("/active/count", response_model=int)
-async def get_active_mods_count(db: Session = Depends(get_db)) -> int:
-    return len([mod for mod in get_mods(db, active=True)])
-
-
-@router.get("/active/count", response_model=int)
-async def get_active_mods_count(db: Session = Depends(get_db)) -> int:
-    return len([mod for mod in get_mods(db, active=True)])
+@router.get("/active/count")
+async def get_active_mods_count(db: Session = Depends(get_db)) -> Dict[str, int]:
+    try:
+        active_mods = get_mods(db, active=True)
+        return {"count": len(active_mods)}
+    except Exception as e:
+        # Ajoutez du logging pour comprendre l'erreur
+        print(f"Error in get_active_mods_count: {e}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")

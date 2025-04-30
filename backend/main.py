@@ -14,7 +14,9 @@ from core.config import settings
 from core.sentry import configure_sentry, capture_exception
 from core.plugin_manager import PluginManager
 from core.events import startup_events, shutdown_events
-from db.database import async_init_db, async_cleanup_db
+from db.database import async_init_db, async_cleanup_db, engine
+from sqlalchemy.orm import sessionmaker
+
 
 from api import (
     mods,
@@ -56,10 +58,23 @@ class ApplicationInitializer:
             logging.getLogger(logger_name).setLevel(logging.WARNING)
 
         self.logger.info("Logging system initialized")
-
     async def initialize_database(self) -> None:
         try:
             await async_init_db()
+            
+            from db.models import Mod
+            session_local = sessionmaker(bind=engine)
+            session = session_local()
+            try:
+                session.query(Mod).first()
+                print("Mods table is accessible")
+            except Exception as e:
+                print(f"Error accessing Mods table: {e}")
+                from db.database import manual_db_init
+                manual_db_init()
+            finally:
+                session.close()
+            
             self.system_status['database'] = True
             self.logger.info("Database initialized successfully")
         except Exception as e:
@@ -67,7 +82,8 @@ class ApplicationInitializer:
             capture_exception(e, "Database initialization failed")
             self.logger.error(f"Database initialization error: {str(e)}")
             raise
-
+        
+        
     async def load_plugins(self) -> None:
         try:
             discovered_plugins = await self.plugin_manager.discover_plugins()
@@ -139,6 +155,8 @@ class ApplicationInitializer:
             "http://localhost:8000",  # Frontend production/served
             "http://127.0.0.1:3000",
             "http://127.0.0.1:8000",
+            "http://localhost:8668",  # Backend production/served
+            "http://127.0.0.1:8668" 
             # Add any other origins that need access
         ]
         
@@ -177,12 +195,12 @@ class ApplicationInitializer:
         # Include all routers
         for router in [
             (health.router, "/api", ["health"]),  # Added health router with /api prefix
-            (mods.router, "/api/mods", ["mods"]),
-            (automation.router, "/api/automation", ["automation"]),
-            (settings_router.router, "/api/settings", ["settings"]),
-            (system.router, "/api/system", ["system"]),
+            (mods.router, "/api", ["mods"]),
+            (automation.router, "/api", ["automation"]),
+            (settings_router.router, "/api", ["settings"]),
+            (system.router, "/api", ["system"]),
             (advanced_processes_router, "/api/system", ["advanced_processes"]),
-            (plugins.router, "/api/plugins", ["plugins"])
+            (plugins.router, "/api", ["plugins"])
         ]:
             app.include_router(router[0], prefix=router[1], tags=router[2])
 
@@ -216,3 +234,30 @@ if __name__ == "__main__":
         log_level=settings.LOG_LEVEL.lower(),
         workers=settings.WORKERS
     )
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

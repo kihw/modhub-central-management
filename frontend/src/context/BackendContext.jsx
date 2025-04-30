@@ -20,15 +20,11 @@ export const BackendProvider = ({ children }) => {
   // Définition de l'URL de l'API - corrigée pour utiliser le port 8668
   const API_BASE_URL =
     process.env.NODE_ENV === "development"
-      ? "/api" // En dev, on utilise le proxy configuré dans package.json ou vite.config
-      : "http://localhost:8668/api"; // En prod, on utilise l'URL directe
-
-  // Create axios instance with base URL
+      ? "http://localhost:8668/api" // En dev, on utilise l'URL directe avec le bon port
+      : "http://localhost:8668/api"; // En prod, on utilise l'URL directe avec le bon port
 
   const axiosInstance = axios.create({
-    baseURL: process.env.NODE_ENV === "development"
-      ? "http://localhost:8668/api"
-      : "/api",
+    baseURL: API_BASE_URL,
     timeout: 5000,
     headers: {
       "Content-Type": "application/json",
@@ -48,7 +44,7 @@ export const BackendProvider = ({ children }) => {
           setStatus((prev) => ({ ...prev, isChecking: true }));
         }
 
-        const response = await axiosInstance.get("/status");
+        const response = await axiosInstance.get("/health");
 
         if (isMounted.current) {
           setStatus({

@@ -12,7 +12,13 @@ export default defineConfig({
         build: {
           outDir: "dist-electron",
           rollupOptions: {
-            external: ["electron", "electron-devtools-installer", "path", "fs", "os"],
+            external: [
+              "electron",
+              "electron-devtools-installer",
+              "path",
+              "fs",
+              "os",
+            ],
           },
         },
       },
@@ -71,6 +77,15 @@ export default defineConfig({
         changeOrigin: true,
         secure: false,
         rewrite: (path) => path.replace(/^\/api/, ""),
+        ws: true,
+        timeout: 60000,
+      },
+      "/health": {
+        // Ajoutez cette configuration spécifique
+        target: "http://localhost:8668",
+        changeOrigin: true,
+        secure: false,
+        rewrite: (path) => path.replace(/^\/health/, ""),
         ws: true,
         timeout: 60000,
       },

@@ -3,6 +3,7 @@ from pydantic import BaseModel
 from typing import Dict, Optional
 import platform
 import time
+import logging
 
 router = APIRouter(tags=["health"])
 
@@ -17,12 +18,11 @@ class HealthResponse(BaseModel):
 # Track when the service started
 START_TIME = time.time()
 
+logger = logging.getLogger(__name__)
+
 @router.get("/health", response_model=HealthResponse, status_code=status.HTTP_200_OK)
 async def health_check() -> Dict:
-    """
-    Simple health check endpoint that returns basic service information.
-    This serves as both a health check and a CORS test point for frontend apps.
-    """
+    logger.info("Health check endpoint accessed")  # Ajoutez ce log
     return {
         "status": "ok",
         "version": "0.1.0",

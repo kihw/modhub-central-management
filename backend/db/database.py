@@ -64,6 +64,7 @@ if settings.DB_TYPE == "sqlite":
 engine = create_engine(DATABASE_URL, **engine_config, **sqlite_config)
 async_engine = create_async_engine(ASYNC_DATABASE_URL, **engine_config)
 
+
 # Create session factories
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 AsyncSessionLocal = async_sessionmaker(
@@ -160,4 +161,13 @@ async def async_cleanup_db() -> None:
         logger.info("Async database connections cleaned up")
     except Exception as e:
         logger.error(f"Async database cleanup failed: {str(e)}", exc_info=True)
+        raise
+
+def manual_db_init():
+    from db.models import Base
+    try:
+        Base.metadata.create_all(bind=engine)
+        logger.info("Manual database initialization completed successfully")
+    except Exception as e:
+        logger.error(f"Manual database initialization failed: {str(e)}", exc_info=True)
         raise

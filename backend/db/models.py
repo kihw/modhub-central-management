@@ -48,22 +48,21 @@ class UserSettings(Base):
     user = relationship("User", back_populates="settings")
 
 class Mod(Base):
-    __tablename__ = "mods"
+    __tablename__ = 'mods'
     
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     name = Column(String(100), nullable=False, index=True)
-    type = Column(Enum(ModType), nullable=False, server_default=ModType.CUSTOM.value)
-    description = Column(Text, nullable=True)
-    is_active = Column(Boolean, server_default="0", nullable=False)
-    priority = Column(Integer, server_default="5", nullable=False)
-    config = Column(JSON, server_default="{}", nullable=False)
-    created_at = Column(DateTime(timezone=True), server_default="CURRENT_TIMESTAMP", nullable=False)
-    updated_at = Column(DateTime(timezone=True), server_default="CURRENT_TIMESTAMP", onupdate=datetime.utcnow, nullable=False)
+    type = Column(String(50), nullable=False)
+    description = Column(String, nullable=True)
+    is_active = Column(Boolean, default=False, nullable=False)
+    priority = Column(Integer, default=5, nullable=False)
+    config = Column(JSON, default={}, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     
     user = relationship("User", back_populates="mods")
     rules = relationship("AutomationRule", back_populates="mod", cascade="all, delete-orphan")
-
 class Condition(Base):
     __tablename__ = "conditions"
     
