@@ -14,7 +14,7 @@ from core.config import settings
 from core.sentry import configure_sentry, capture_exception
 from core.plugin_manager import PluginManager
 from core.events import startup_events, shutdown_events
-from db.database import engine, Base
+from db.database import async_init_db, async_cleanup_db
 
 from api import (
     mods,
@@ -58,8 +58,7 @@ class ApplicationInitializer:
 
     async def initialize_database(self) -> None:
         try:
-            async with engine.begin() as conn:
-                await conn.run_sync(Base.metadata.create_all)
+            await async_init_db()
             self.system_status['database'] = True
             self.logger.info("Database initialized successfully")
         except Exception as e:
@@ -115,7 +114,11 @@ class ApplicationInitializer:
                 self.logger.error(f"Application startup failed: {str(e)}")
                 raise
             finally:
-                await shutdown_events()
+                try:
+                    await shutdown_events()
+                    await async_cleanup_db()
+                except Exception as e:
+                    self.logger.error(f"Application shutdown error: {str(e)}")
 
         app = FastAPI(
             title="ModHub Central",
@@ -169,7 +172,7 @@ class ApplicationInitializer:
         ]:
             app.include_router(router[0], prefix=router[1], tags=router[2])
 
-        @app.get("/system/status", tags=["system"])
+        @app.get("/api/status", tags=["system"])
         async def get_system_status():
             return {
                 "version": settings.APP_VERSION,
@@ -197,5 +200,5 @@ if __name__ == "__main__":
         port=settings.PORT,
         reload=settings.DEBUG,
         log_level=settings.LOG_LEVEL.lower(),
-        workers=settings.WORKERS
+        workers=getattr(settings, "WORKERS", 1)
     )
