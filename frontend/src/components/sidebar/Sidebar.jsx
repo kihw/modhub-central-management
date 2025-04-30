@@ -7,32 +7,52 @@ import {
   FaCog,
   FaHistory,
   FaTachometerAlt,
+  FaExclamationTriangle
 } from "react-icons/fa";
 import { NavLink } from "react-router-dom";
 import logo from "../../assets/modhub-logo.png";
+import axios from "axios";
 
 const Sidebar = (props) => {
   const { collapsed, setCollapsed = () => {} } = props;
 
   const [activeModCount, setActiveModCount] = useState(0);
+  const [fetchError, setFetchError] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Fetch active mods count from API
+    // Fetch active mods count from API with error handling
     const fetchActiveModsCount = async () => {
+      setIsLoading(true);
       try {
-        const response = await fetch(
-          "http://localhost:8668/api/mods/active/count"
-        );
-        const data = await response.json();
-        setActiveModCount(data.active_count);
+        // Using relative path to avoid CORS issues
+        const response = await axios.get("/api/mods/active/count", {
+          // Set timeout and handle errors appropriately
+          timeout: 5000,
+          headers: {
+            "Content-Type": "application/json",
+            "Accept": "application/json"
+          }
+        });
+        
+        setActiveModCount(response.data.active_count);
+        setFetchError(false);
       } catch (error) {
         console.error("Failed to fetch active mods count:", error);
+        setFetchError(true);
+        // Fallback value for active mods if fetch fails
+        setActiveModCount(0);
+      } finally {
+        setIsLoading(false);
       }
     };
 
     fetchActiveModsCount();
+    
+    // Set interval for periodic updates with cleanup
     const interval = setInterval(fetchActiveModsCount, 10000); // Update every 10 seconds
 
+    // Cleanup interval on component unmount
     return () => clearInterval(interval);
   }, []);
 
@@ -72,18 +92,33 @@ const Sidebar = (props) => {
 
       <div className="p-4 mb-2">
         <div
-          className={`bg-green-800 rounded-lg p-2 ${
+          className={`${fetchError ? "bg-red-800" : "bg-green-800"} rounded-lg p-2 ${
             collapsed ? "text-center" : "flex justify-between items-center"
           }`}
         >
           {collapsed ? (
-            <div className="text-xs font-semibold">{activeModCount}</div>
+            <div className="text-xs font-semibold">
+              {fetchError ? (
+                <FaExclamationTriangle className="mx-auto text-yellow-400" />
+              ) : (
+                activeModCount
+              )}
+            </div>
           ) : (
             <>
-              <span className="text-sm">Active Mods</span>
-              <span className="bg-green-700 px-2 py-1 rounded text-xs font-semibold">
-                {activeModCount}
+              <span className="text-sm">
+                {fetchError ? "Connection Error" : "Active Mods"}
               </span>
+              {fetchError ? (
+                <span className="bg-red-700 px-2 py-1 rounded text-xs font-semibold text-yellow-400">
+                  <FaExclamationTriangle className="inline mr-1" />
+                  Error
+                </span>
+              ) : (
+                <span className="bg-green-700 px-2 py-1 rounded text-xs font-semibold">
+                  {isLoading ? "..." : activeModCount}
+                </span>
+              )}
             </>
           )}
         </div>
