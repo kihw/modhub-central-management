@@ -112,8 +112,8 @@ class RuleResponse(RuleBase):
     created_at: datetime
     updated_at: Optional[datetime] = None
 
-    class Config:
-        orm_mode = True
+class Config:
+    from_attributes = True
 
 class LogLevel(str, Enum):
     DEBUG = "debug"
@@ -150,7 +150,7 @@ class SystemInfoResponse(BaseModel):
     cpu_count: conint(gt=0)
     total_memory: conint(ge=0)
     total_disk: conint(ge=0)
-    version: str = Field("0.1.0", regex=r'^\d+\.\d+\.\d+$')
+    version: str = Field("0.1.0", pattern=r'^\d+\.\d+\.\d+$')
     platform: str
     python_version: str
 

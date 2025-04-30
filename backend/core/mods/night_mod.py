@@ -2,6 +2,7 @@ from datetime import datetime, time
 from typing import Optional, Dict, Any
 import logging
 import time as time_module
+from .mod_base import ModBase 
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +27,7 @@ class DeviceController:
             return False
         return True
 
-class NightMod:
+class NightMod(ModBase):
     DEFAULT_SETTINGS = {
         "start_time": "22:00",
         "end_time": "06:00",
@@ -43,11 +44,14 @@ class NightMod:
     }
 
     def __init__(self, device_controller: Optional[DeviceController] = None):
+        super().__init__(
+            name="Night Mode",
+            description="Reduce blue light and brightness during night hours",
+            priority=70
+        )
         self.device_controller = device_controller or DeviceController()
-        self.settings = self.DEFAULT_SETTINGS.copy()
-        self.logger = logging.getLogger(__name__)
+        self._config = self.DEFAULT_SETTINGS.copy()
         self.activation_reason = None
-        self.is_active = False
         
     def load_settings(self) -> None:
         try:
@@ -115,29 +119,43 @@ class NightMod:
             return False
             
     def activate(self, context: Optional[Dict[str, Any]] = None) -> bool:
-        if self.is_active:
+        if self.state == self.ModState.ACTIVE:
             return True
-        return self._apply_night_settings("manual" if context is None else "auto")
+
+        result = self._apply_night_settings("manual" if context is None else "auto")
+        if result:
+            self._log_state_change(self.state, self.ModState.ACTIVE)
+            self._update_activation_metrics(True)
+        return result
     
     def deactivate(self) -> bool:
-        if not self.is_active:
+        if self.state != self.ModState.ACTIVE:
             return True
+
         try:
-            if self.settings["smooth_transition"]:
-                transition_time = min(self.settings["transition_duration_sec"], 300)
+            if self._config["smooth_transition"]:
+                transition_time = min(self._config["transition_duration_sec"], 300)
                 time_module.sleep(transition_time / 60)
 
-            for room in self.settings["affect_rooms"]:
-                if room not in self.settings["exclude_rooms"]:
+            for room in self._config["affect_rooms"]:
+                if room not in self._config["exclude_rooms"]:
                     self.device_controller.apply_room_settings(room, {
                         "brightness": 100,
                         "color_temp": 6500,
                         "blue_light": 100
                     })
 
-            self.is_active = False
+            self._log_state_change(self.state, self.ModState.INACTIVE)
             self.activation_reason = None
             return True
         except Exception as e:
-            self.logger.error(f"Failed to deactivate Night Mod: {e}")
+            logger.error(f"Failed to deactivate Night Mod: {e}")
+            return False
+        
+    def validate_config(self, config: Dict[str, Any]) -> bool:
+        try:
+            required_keys = ["start_time", "end_time", "brightness_reduction", "color_temperature"]
+            return all(key in config for key in required_keys)
+        except Exception as e:
+            logger.error(f"Config validation failed: {e}")
             return False

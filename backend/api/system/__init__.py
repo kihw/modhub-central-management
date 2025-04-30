@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException
-from typing import Dict, List, TypedDict
+from typing import Dict, List
+from typing_extensions import TypedDict
 import platform
 import psutil
 import socket

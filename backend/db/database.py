@@ -47,12 +47,18 @@ if settings.DB_TYPE == "sqlite":
     
     @event.listens_for(Engine, "connect")
     def set_sqlite_pragma(dbapi_connection, _):
-        with dbapi_connection.cursor() as cursor:
+        try:
+            # Try the regular approach for synchronous connections
+            cursor = dbapi_connection.cursor()
             cursor.execute("PRAGMA journal_mode=WAL")
             cursor.execute("PRAGMA synchronous=NORMAL")
             cursor.execute("PRAGMA cache_size=10000")
             cursor.execute("PRAGMA foreign_keys=ON")
-
+            cursor.close()
+        except Exception as e:
+            # Log the error but don't crash
+            logging.warning(f"Failed to set SQLite pragmas: {e}")
+    
 # Create sync and async engines
 engine = create_engine(DATABASE_URL, **engine_config, **sqlite_config)
 async_engine = create_async_engine(ASYNC_DATABASE_URL, **engine_config)
