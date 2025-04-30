@@ -21,7 +21,8 @@ from api import (
     automation,
     settings as settings_router,
     system,
-    plugins
+    plugins,
+    health
 )
 from api.system.processes import router as advanced_processes_router
 
@@ -132,7 +133,7 @@ class ApplicationInitializer:
             openapi_url="/openapi.json" if settings.DEBUG else None
         )
 
-        # Enable CORS - added this section to fix cross-origin issues
+        # Enable CORS - this allows frontend applications to connect
         origins = [
             "http://localhost:3000",  # React dev server
             "http://localhost:8000",  # Frontend production/served
@@ -173,7 +174,9 @@ class ApplicationInitializer:
                 content={"message": "Internal Server Error"}
             )
 
+        # Include all routers
         for router in [
+            (health.router, "/api", ["health"]),  # Added health router with /api prefix
             (mods.router, "/api/mods", ["mods"]),
             (automation.router, "/api/automation", ["automation"]),
             (settings_router.router, "/api/settings", ["settings"]),
